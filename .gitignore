@@ -1,25 +1,30 @@
-# Node
+# Dependencies
 node_modules/
+**/node_modules/
 
 # Environment
 .env
 .env.*
 
+!.env.example
+
 # Logs
-logs/
 *.log
 
 # Build
 dist/
 build/
 
-# Coverage
-coverage/
+# Vite
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 
-# OS
-.DS_Store
-Thumbs.db
+# Coverage
+coverage/
