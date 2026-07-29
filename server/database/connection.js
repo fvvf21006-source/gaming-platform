@@ -16,15 +16,13 @@ pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL pool error:', err);
 });
 
+// Verifies the pool can actually reach PostgreSQL. Resolves silently
+// on success; rejects with the original error on failure. Deliberately
+// does not log or exit here — that belongs to whatever calls this
+// (server.js on startup), so this module stays limited to connection
+// setup and stays reusable from anywhere (health checks, scripts, etc.).
 export async function verifyConnection() {
-  try {
-    await pool.query('SELECT 1');
-    console.log('Database connection verified.');
-    return true;
-  } catch (err) {
-    console.error('Database connection failed:', err.message);
-    return false;
-  }
+  await pool.query('SELECT 1');
 }
 
 export default pool;
