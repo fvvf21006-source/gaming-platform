@@ -97,16 +97,18 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**Phase 1 — Documentation Foundation** (see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full phase tracking).
+**P04 — User Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
 
 ## Completed Phases
 
-- Requirements gathering (Software Requirements Proposal, v1.0)
-- Documentation foundation (this phase)
+- **P00** — Documentation foundation (requirements, architecture, business rules, Git workflow).
+- **P01** — Project scaffolding (frontend and backend run independently, no business logic).
+- **P02** — Database foundation (11 tables, migrations, seeds, `schema.sql`, connection verification on startup).
+- **P03** — Authentication & Authorization (`POST /api/auth/login`, `GET /api/auth/me`, JWT, bcrypt, `authenticate`/`authorize` middleware).
 
 ## Next Phase
 
-**Phase 2 — UI/UX design and database schema design.** No implementation code should be written until database design (`docs/03_DATABASE.md`) and API design (`docs/04_API_SPEC.md`) are reviewed and finalized.
+**P04 — User management.** Account creation within the hierarchy (FR-2.1–FR-2.6): a role creates accounts only in the tier directly beneath it, profile management, and freeze/activate. Builds directly on the `authenticate`/`authorize` middleware from P03 — no new authentication work expected.
 
 ## Important Constraints
 

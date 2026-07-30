@@ -1,6 +1,6 @@
 # 09 — Deployment
 
-This document describes the future deployment process. No deployment has occurred yet (see `06_PROJECT_STATUS.md`); this is a plan to be executed in Phase 7.
+This document describes the future deployment process. No deployment has occurred yet (see `06_PROJECT_STATUS.md`); this is a plan to be executed in a future milestone (P10 — Deployment and user acceptance).
 
 ## Frontend
 
@@ -11,7 +11,7 @@ This document describes the future deployment process. No deployment has occurre
 
 - Deploy the Express application to a Node.js-compatible hosting environment.
 - Ensure the process manager restarts the server on crash and on deploy.
-- Confirm CORS is configured to allow only the deployed frontend's origin.
+- Confirm CORS is configured to allow only the deployed frontend's origin (`CLIENT_URL`).
 
 ## Database
 
@@ -28,8 +28,7 @@ Production values for all variables listed in `08_SETUP.md` must be set via the 
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `JWT_EXPIRES_IN`
-- `BCRYPT_SALT_ROUNDS`
-- `CORS_ORIGIN`
+- `CLIENT_URL`
 - `NODE_ENV=production`
 
 ## Production Checklist
@@ -37,7 +36,7 @@ Production values for all variables listed in `08_SETUP.md` must be set via the 
 - [ ] All migrations applied successfully against the production database.
 - [ ] Initial Super Admin account created (and its default credentials rotated immediately).
 - [ ] `JWT_SECRET` is a strong, unique value distinct from any development value.
-- [ ] `CORS_ORIGIN` restricted to the production frontend domain only.
+- [ ] `CLIENT_URL` restricted to the production frontend domain only.
 - [ ] Helmet, CORS, and Morgan middleware confirmed active in production.
 - [ ] HTTPS enforced at the hosting/proxy layer.
 - [ ] Database backups configured and verified.

@@ -14,6 +14,14 @@ This document describes the expected REST API structure by module. It does not d
 - **Expected Response:** `{ token, user: { id, role, ... } }`
 - **Possible Errors:** 400 invalid input, 401 invalid credentials, 403 account frozen, 429 too many attempts (lockout)
 
+### GET /api/auth/me
+- **Purpose:** Retrieve the authenticated user's own account information.
+- **Method:** GET
+- **Authentication:** Required (any authenticated role)
+- **Expected Request:** none (token in header)
+- **Expected Response:** `{ user: { id, username, email, role, status } }`
+- **Possible Errors:** 401 missing/invalid/expired token, 404 user not found
+
 ### POST /api/auth/logout
 - **Purpose:** Invalidate the current session.
 - **Method:** POST
