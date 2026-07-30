@@ -53,6 +53,34 @@ gaming-platform/
 
 See [`docs/08_SETUP.md`](docs/08_SETUP.md) for full setup instructions, including Node version, environment variables, database provisioning, migrations, and seed data.
 
+## Authentication Setup
+
+Authentication uses JWT (issuance/verification) and bcrypt (password hashing) — no OAuth, refresh tokens, cookies, or session store.
+
+1. Add a JWT secret to `server/.env` (copy from `server/.env.example`):
+   ```
+   JWT_SECRET=replace_with_secure_random_secret
+   JWT_EXPIRES_IN=1h
+   ```
+2. Run migrations and seeds as usual (see [`docs/08_SETUP.md`](docs/08_SETUP.md)) — the seed data now includes a real bcrypt hash, so no manual SQL is needed to make the default account usable.
+3. Log in with the seeded Super Admin account:
+   ```
+   username: super_admin
+   password: Admin@123
+   ```
+4. Example login request:
+   ```bash
+   curl -X POST http://localhost:5000/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"super_admin","password":"Admin@123"}'
+   ```
+   Returns `{ token, user }`. Use the token as a Bearer token on protected endpoints:
+   ```bash
+   curl http://localhost:5000/api/auth/me \
+     -H "Authorization: Bearer <token>"
+   ```
+5. **Change the default password before any real deployment** — see the production checklist in [`docs/09_DEPLOYMENT.md`](docs/09_DEPLOYMENT.md).
+
 ## Development Workflow
 
 See [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md) for the layered architecture and [`CLAUDE.md`](CLAUDE.md) for coding standards and development rules. Git branching and commit conventions are documented at the bottom of `CLAUDE.md`.

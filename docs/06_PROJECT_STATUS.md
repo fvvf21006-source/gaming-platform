@@ -1,21 +1,20 @@
 # 06 — Project Status
 
-_Last updated: initial documentation phase._
+_Last updated: P03 (authentication) in progress._
 
 ## Current Phase
 
-**Phase 1 — Requirements validation and planning** (in progress; documentation foundation being established).
+**P03 — Authentication** (in progress).
 
 ## Completed
 
-- Software Requirements Proposal reviewed and accepted as authoritative business source.
-- Technology stack finalized.
-- Full documentation foundation created (README, CLAUDE.md, and `docs/00`–`09`).
+- **P00** — Software Requirements Proposal reviewed and accepted as authoritative business source; technology stack finalized; full documentation foundation created (README, CLAUDE.md, and `docs/00`–`09`).
+- **P01** — Project scaffolding: React (Vite) frontend and Express backend scaffolds created and verified to run independently, no business logic.
+- **P02** — Database foundation: 11 normalized tables, migrations, seeds, and `schema.sql` created and verified against a live PostgreSQL instance; startup now verifies the database connection before the server listens.
 
 ## In Progress
 
-- Database schema design (to inform `03_DATABASE.md` finalization and migration authoring).
-- API contract review against `04_API_SPEC.md`.
+- **P03** — Authentication layer: login (`POST /api/auth/login`), current-user lookup (`GET /api/auth/me`), JWT issuance/verification, bcrypt password hashing, and reusable role-based authorization middleware. Scope is authentication only — no user CRUD, wallet, or game APIs yet.
 
 ## Upcoming Milestones
 
@@ -40,4 +39,4 @@ See table above — Phases 2 through 7 remain unstarted as of this writing.
 
 ## Current Version
 
-`v0.1.0` — documentation foundation only; no implementation code exists yet.
+`v0.3.0-in-progress` — scaffolding and database foundation complete (P00–P02); authentication (P03) in progress.
