@@ -1,69 +1,86 @@
 # 03 — Database Documentation
 
-This document describes the expected database design at a conceptual level. No SQL is included here — implementation SQL belongs in `server/database/schema.sql` and the migration files, per the Repository Pattern.
+This document describes the as-implemented database design at a conceptual level. Implementation SQL lives in `server/database/schema.sql` and the migration files, per the Repository Pattern. See [`ER_DIAGRAM.md`](ER_DIAGRAM.md) for the full entity-relationship diagram.
 
-## Expected Tables
+## Tables
 
 | Table | Purpose |
 |---|---|
-| `users` | All accounts across all roles (Super Admin, Level 1, Level 2, Level 3, Player), with hierarchy reference |
-| `roles` | Reference table of role names/permissions (or an enum, depending on final design) |
+| `roles` | Fixed reference set of the five hierarchy tiers (Super Admin, Level 1, Level 2, Level 3, Player) and their ordering |
+| `users` | All accounts across all roles, with hierarchy reference (`created_by`) |
+| `user_profiles` | Optional profile data (name, display name, avatar), one-to-one with `users` |
 | `wallets` | One virtual point balance per user |
-| `transactions` | Every point transfer between users |
+| `wallet_transactions` | Every downward point transfer between a user and a direct child |
+| `game_categories` | Grouping for the arcade game catalog |
 | `games` | Catalog of available arcade games and their point cost |
-| `game_sessions` | Each instance of a player accessing/playing a game, including score |
-| `audit_logs` | Immutable record of all sensitive actions across the system |
+| `game_sessions` | Each instance of a player accessing/playing a game, including points spent and score |
 | `notifications` | Per-user notification records for significant events |
-| `login_history` | Record of login attempts and outcomes |
-| `password_resets` | Password reset request/token tracking |
+| `audit_logs` | Immutable record of all sensitive actions across the system |
+| `system_settings` | Key-value platform configuration, editable without a code deployment |
+
+Note: point consumption for game access (`game_sessions.points_spent`) is tracked separately from hierarchy transfers (`wallet_transactions`), since Players can spend points but never transfer them onward (BR-15). There are no separate `login_history` or `password_resets` tables — those requirements (FR-1.2, FR-1.5) are not yet implemented as of P03 and will be scheduled against a future milestone.
 
 ## Relationships
 
-- `users.created_by` references `users.id` — self-referencing, models the hierarchy (each user, except Super Admin, has exactly one creator).
 - `users.role_id` references `roles.id`.
+- `users.created_by` references `users.id` — self-referencing, models the hierarchy (each user, except the initial Super Admin, has exactly one creator).
+- `user_profiles.user_id` references `users.id` — one-to-one.
 - `wallets.user_id` references `users.id` — one-to-one.
-- `transactions.sender_id` and `transactions.recipient_id` both reference `users.id`.
+- `wallet_transactions.sender_id` and `wallet_transactions.recipient_id` both reference `users.id`.
+- `games.category_id` references `game_categories.id` — nullable.
 - `game_sessions.user_id` references `users.id`; `game_sessions.game_id` references `games.id`.
-- `audit_logs.actor_id` references `users.id` (the user who performed the action).
-- `notifications.user_id` references `users.id` (the recipient).
-- `login_history.user_id` references `users.id`.
-- `password_resets.user_id` references `users.id`.
+- `notifications.user_id` references `users.id`.
+- `audit_logs.actor_id` references `users.id` — nullable, so a log entry survives if the acting account is later deleted.
+- `system_settings` has no foreign key relationships to any other table.
 
 ## Primary Keys
 
-Every table uses a surrogate primary key (`id`), expected to be a UUID or auto-incrementing integer — final type to be confirmed in the schema design phase.
+Every table uses a UUID surrogate primary key (`id`), generated with `gen_random_uuid()` via the `pgcrypto` extension.
 
 ## Foreign Keys
 
-Foreign key constraints should be enforced at the database level for all relationships listed above, with `ON DELETE` behavior decided per table (e.g. `RESTRICT` on `users.created_by` to prevent orphaning the hierarchy; `CASCADE` may be appropriate for dependent records like `notifications`).
+- `ON DELETE RESTRICT` on `users.role_id`, `users.created_by`, `wallet_transactions.sender_id`/`recipient_id`, and `game_sessions.game_id` — prevents orphaning the hierarchy, the transaction ledger, or session history.
+- `ON DELETE CASCADE` on `user_profiles.user_id`, `wallets.user_id`, `game_sessions.user_id`, `notifications.user_id` — dependent, per-user records that should not outlive the user.
+- `ON DELETE SET NULL` on `games.category_id` and `audit_logs.actor_id` — the referencing row should survive even if the category or acting user is removed.
+
+## CHECK Constraints
+
+- `roles.hierarchy_level` must be between 0 and 4.
+- `users.status` must be `active` or `frozen`; `created_by` cannot equal a user's own `id`.
+- `wallets.balance` must never be negative (BR-12).
+- `wallet_transactions.amount` must be positive; both post-transfer balances must be non-negative; `sender_id` cannot equal `recipient_id`.
+- `games.point_cost` must be non-negative.
+- `game_sessions.points_spent` must be non-negative; `status` must be `in_progress`, `completed`, or `abandoned`; `completed_at` cannot precede `started_at`.
 
 ## Indexes
 
-- Index `users.created_by` (frequent hierarchy lookups: "get all children of this user").
-- Index `users.role_id` (frequent role-based filtering).
-- Index `transactions.sender_id` and `transactions.recipient_id` (transaction history lookups).
-- Index `game_sessions.user_id` (gameplay history lookups).
-- Index `audit_logs.actor_id` and `audit_logs.created_at` (audit review and reporting).
-- Unique index on `users.username`/`users.email`.
+- `users.created_by` and `users.role_id` (hierarchy and role lookups).
+- `wallet_transactions.sender_id` and `wallet_transactions.recipient_id` (transaction history lookups).
+- `games.category_id` (catalog filtering).
+- `game_sessions.user_id` and `game_sessions.game_id` (gameplay history lookups).
+- `notifications.user_id` and the composite `(user_id, is_read)` (unread-notification lookups).
+- `audit_logs.actor_id` and `audit_logs.created_at` (audit review and reporting).
+- Unique constraints double as indexes on `users.username`, `users.email`, `roles.name`, `roles.hierarchy_level`, `wallets.user_id`, `user_profiles.user_id`, `game_categories.name`, `games.name`, and `system_settings.key`.
 
 ## Naming Conventions
 
 - Tables: plural, `snake_case` (e.g. `game_sessions`).
 - Columns: `snake_case` (e.g. `created_at`, `sender_id`).
 - Primary key column: `id`.
-- Foreign key columns: `<singular_referenced_table>_id` (e.g. `user_id`, `role_id`).
-- Timestamps: `created_at`, `updated_at` on every table where applicable.
-- Migration files: prefixed with a sequential number or timestamp (e.g. `001_create_users_table.sql`).
+- Foreign key columns: `<singular_referenced_table>_id` (e.g. `user_id`, `role_id`), except `wallet_transactions.sender_id`/`recipient_id` and `audit_logs.actor_id`, which are named for their role rather than the referenced table.
+- Timestamps: `created_at` on every table; `updated_at` additionally on tables that are mutated after creation (`users`, `user_profiles`, `wallets`, `games`, `system_settings`).
+- Migration files: prefixed with a sequential number (e.g. `002_create_users.sql`).
 
 ## Migration Strategy
 
 - Every schema change is a new, additive migration file — existing, already-applied migrations are never edited.
-- Migrations are numbered/timestamped and applied in strict order.
-- Each migration should be reversible where practical (up/down or documented rollback steps).
-- `schema.sql` reflects the cumulative result of all applied migrations, for reference and fresh local setup.
+- Migrations are numbered and applied in strict order (`000_enable_extensions.sql` through `011_create_system_settings.sql` as of P02/P03).
+- Applied via plain `psql -f` in sequence (`for f in server/database/migrations/*.sql; do psql ... -f "$f"; done`) — no separate migration-runner tool is in use.
+- `schema.sql` reflects the cumulative result of all applied migrations, for reference and fresh local setup; regenerate it after adding a new migration.
 
 ## Seed Strategy
 
-- Seed scripts populate a baseline Super Admin account for initial platform access.
-- Optional seed scripts may populate sample hierarchy/test data for local development.
-- Seed data is never used in production; production is bootstrapped only with the initial Super Admin account.
+- `001_seed_roles.sql` populates the five fixed hierarchy roles.
+- `002_seed_admin_user.sql` bootstraps the single initial Super Admin account, with a real bcrypt hash as of P03 (username `super_admin`, documented default password in `README.md`).
+- `003_seed_system_settings.sql` populates baseline platform configuration.
+- Seed scripts are for local/development use only and must never run against production; production is bootstrapped only with the initial Super Admin account, whose password must be rotated immediately (see `09_DEPLOYMENT.md`).

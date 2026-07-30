@@ -57,9 +57,10 @@ The following environment variables are expected (define in a `.env` file, never
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret used to sign/verify JWTs |
 | `JWT_EXPIRES_IN` | Token expiry duration |
-| `BCRYPT_SALT_ROUNDS` | Salt rounds for password hashing |
-| `CORS_ORIGIN` | Allowed origin(s) for the frontend |
+| `CLIENT_URL` | Allowed frontend origin, used to configure CORS |
 | `NODE_ENV` | `development` / `production` |
+
+bcrypt's cost factor is currently a fixed constant in `utils/password.js` rather than environment-configurable; there is no `BCRYPT_SALT_ROUNDS` variable to set.
 
 ## Database Setup
 
@@ -70,8 +71,8 @@ The following environment variables are expected (define in a `.env` file, never
 
 ## Migration Workflow
 
-- Migrations live in `server/database/migrations/`, named with a sequential prefix (e.g. `001_create_users_table.sql`).
-- Apply migrations in order via the project's migration runner (to be selected in Phase 2/3 — e.g. `node-pg-migrate` or an equivalent raw-SQL runner consistent with the "raw SQL only" constraint).
+- Migrations live in `server/database/migrations/`, named with a sequential prefix (e.g. `002_create_users.sql`).
+- Apply migrations in order via plain `psql`, no separate migration-runner tool: `for f in server/database/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done`.
 - Never edit an already-applied migration — create a new one to make further changes.
 
 ## Seed Workflow

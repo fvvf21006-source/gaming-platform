@@ -18,6 +18,10 @@ Separating business rules from HTTP handling (controllers) and data access (repo
 
 JWTs allow stateless authentication — the server doesn't need to persist session state to verify a request, which simplifies horizontal scaling and keeps the auth flow straightforward for an academic-scope project.
 
+## Why bcrypt
+
+bcrypt is a widely-used, purpose-built password hashing algorithm with a tunable, deliberately slow cost factor, which resists brute-force and rainbow-table attacks far better than a general-purpose hash. Paired with JWT, it keeps the authentication strategy to exactly two well-understood, single-purpose libraries (P03) rather than pulling in a broader auth framework (e.g. Passport), consistent with CLAUDE.md's "authentication must use bcrypt and JWT only."
+
 ## Why Raw SQL
 
 Raw SQL (via `pg`) over a full ORM keeps query behavior explicit and transparent, which matters for a project centered on strict, auditable balance/transaction rules where implicit ORM behavior (lazy loading, auto-generated joins) could obscure correctness issues.
