@@ -1,10 +1,10 @@
 # 06 — Project Status
 
-_Last updated: P03 (authentication) complete._
+_Last updated: P04 (user management) complete._
 
 ## Current Phase
 
-**P04 — User Management** (not yet started).
+**P05 — Wallet Management** (not yet started).
 
 ## Completed
 
@@ -12,16 +12,16 @@ _Last updated: P03 (authentication) complete._
 - **P01** — Project scaffolding: React (Vite) frontend and Express backend scaffolds created and verified to run independently, no business logic.
 - **P02** — Database foundation: 11 normalized tables, migrations, seeds, and `schema.sql` created and verified against a live PostgreSQL instance; startup now verifies the database connection before the server listens.
 - **P03** — Authentication & Authorization: `POST /api/auth/login` and `GET /api/auth/me` implemented end-to-end (routes → controller → service → repository), JWT issuance/verification, bcrypt password hashing, reusable `authenticate` and `authorize(roles)` middleware. The existing seeded Super Admin account was updated with a real bcrypt hash (no new accounts, no schema changes). Verified against a live PostgreSQL instance: valid login, wrong password, unknown user, missing/invalid/expired token, valid `/me`, and role authorization.
+- **P04** — User Management: `POST /api/users`, `GET /api/users`, `GET /api/users/:id`, `PUT /api/users/:id`, `PATCH /api/users/:id/status` implemented end-to-end. Account creation is restricted to exactly one tier below the creator, creates the user's profile and wallet atomically in one transaction, and enforces username/email uniqueness. Hierarchy visibility (self + all descendants, found via a recursive query) governs listing and viewing. Status changes are ancestor-only — a user can never freeze/reactivate themselves. `DELETE /api/users/:id` returns 405 by design; no schema changes. No frontend, wallet, game, dashboard, or notification work included.
 
 ## In Progress
 
-None — P03 is complete. P04 has not started.
+None — P04 is complete. P05 has not started.
 
 ## Upcoming Milestones
 
 | Milestone | Deliverable |
 |---|---|
-| P04 | User management: account creation within the hierarchy, profile management, freeze/activate accounts (FR-2.1–FR-2.6) |
 | P05 | Wallet management: balance, point transfers, transaction history (FR-3.1–FR-3.5) |
 | P06 | Game management: game catalog, session start/completion, gameplay history (FR-4.1–FR-4.4) |
 | P07 | Reporting, notifications, and audit log review endpoints (FR-5–FR-7) |
@@ -31,7 +31,7 @@ None — P03 is complete. P04 has not started.
 
 ## Future Phases
 
-See table above — P04 onward remain unstarted as of this writing.
+See table above — P05 onward remain unstarted as of this writing.
 
 ## Known Risks
 
@@ -41,4 +41,4 @@ See table above — P04 onward remain unstarted as of this writing.
 
 ## Current Version
 
-`v0.4.0-in-progress` — scaffolding, database foundation, and authentication complete (P00–P03); user management (P04) not yet started.
+`v0.5.0-in-progress` — scaffolding, database foundation, authentication, and user management complete (P00–P04); wallet management (P05) not yet started.

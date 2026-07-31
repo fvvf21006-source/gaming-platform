@@ -51,44 +51,52 @@ This document describes the expected REST API structure by module. It does not d
 ## Users Module
 
 ### POST /api/users
-- **Purpose:** Create a new account in the tier directly beneath the caller.
+- **Purpose:** Create a new account exactly one tier beneath the caller. Creates the user's profile and wallet in the same transaction.
 - **Method:** POST
-- **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3)
-- **Expected Request:** `{ username, password, roleAppropriateFields }`
-- **Expected Response:** `{ id, username, role, createdBy }`
-- **Possible Errors:** 400 invalid input, 401 unauthorized, 403 role not permitted to create this tier, 409 username taken
+- **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
+- **Expected Request:** `{ username, email, password, role, status?, fullName?, displayName? }` — `role` must equal the caller's next tier down (e.g. Level 1 must pass `"level_2"`); `status` defaults to `"active"`.
+- **Expected Response:** `{ user: { id, username, email, role, status, createdBy, createdAt, updatedAt, profile: { fullName, displayName, avatarUrl } } }`
+- **Possible Errors:** 400 invalid input, 401 unauthorized, 403 role not permitted to create this tier, 409 username or email already taken
 
-### GET /api/users/:id
-- **Purpose:** Retrieve a single account's profile.
+### GET /api/users
+- **Purpose:** List accounts the caller may view — themselves plus every user in their descendant hierarchy (not just direct children).
 - **Method:** GET
-- **Authentication:** Required (self, or an ancestor in the hierarchy)
+- **Authentication:** Required (any authenticated role)
 - **Expected Request:** none
-- **Expected Response:** `{ id, username, role, status, createdBy, createdAt }`
-- **Possible Errors:** 401 unauthorized, 403 not in caller's hierarchy, 404 not found
-
-### GET /api/users/children
-- **Purpose:** List accounts directly created by the caller.
-- **Method:** GET
-- **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3)
-- **Expected Request:** query params for pagination/filtering
 - **Expected Response:** `{ items: [...], total }`
 - **Possible Errors:** 401 unauthorized
 
-### PATCH /api/users/:id
-- **Purpose:** Update a profile.
-- **Method:** PATCH
-- **Authentication:** Required (self, or an ancestor for limited fields)
-- **Expected Request:** partial profile fields
-- **Expected Response:** updated profile object
-- **Possible Errors:** 400 invalid input, 401 unauthorized, 403 not permitted, 404 not found
+### GET /api/users/:id
+- **Purpose:** Retrieve a single account — the caller's own, or anywhere in their descendant hierarchy.
+- **Method:** GET
+- **Authentication:** Required (self, or an ancestor in the hierarchy)
+- **Expected Request:** none
+- **Expected Response:** `{ user: { id, username, email, role, status, createdBy, createdAt, updatedAt, profile } }`
+- **Possible Errors:** 401 unauthorized, 403 not in caller's hierarchy, 404 not found
+
+### PUT /api/users/:id
+- **Purpose:** Update email, status, and/or profile fields (`fullName`, `displayName`, `avatarUrl`). Role can never be changed here.
+- **Method:** PUT
+- **Authentication:** Required (self, or an ancestor in the hierarchy)
+- **Expected Request:** `{ email?, status?, fullName?, displayName?, avatarUrl? }` — a `role` field in the body is rejected outright
+- **Expected Response:** `{ user: { ... } }`
+- **Possible Errors:** 400 invalid input or `role` present, 401 unauthorized, 403 not permitted or self attempting a status change, 404 not found, 409 email already taken
 
 ### PATCH /api/users/:id/status
-- **Purpose:** Freeze or activate an account.
+- **Purpose:** Activate or freeze an account. A user may never change their own status (BR-19) — this always requires an ancestor.
 - **Method:** PATCH
-- **Authentication:** Required (an ancestor of the target account)
-- **Expected Request:** `{ status: "frozen" | "active" }`
-- **Expected Response:** `{ id, status }`
-- **Possible Errors:** 401 unauthorized, 403 not permitted, 404 not found
+- **Authentication:** Required (an ancestor of the target account — never the account itself)
+- **Expected Request:** `{ status: "active" | "frozen" }`
+- **Expected Response:** `{ user: { ... } }`
+- **Possible Errors:** 401 unauthorized, 403 not permitted (including self), 404 not found
+
+### DELETE /api/users/:id
+- **Purpose:** Not supported. User deletion is intentionally out of scope.
+- **Method:** DELETE
+- **Authentication:** Required
+- **Expected Request:** none
+- **Expected Response:** none
+- **Possible Errors:** 401 unauthorized, 405 always returned for any authenticated request
 
 ---
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## P04 - User Management
+
+Date:
+YYYY-MM-DD
+
+Completed
+
+- Implemented `POST /api/users`, `GET /api/users`, `GET /api/users/:id`, `PUT /api/users/:id`, `PATCH /api/users/:id/status`
+- Account creation restricted to exactly one hierarchy tier below the creator, with the target role validated against the creator's role
+- User creation, profile creation, and wallet creation committed atomically in a single database transaction
+- Enforced username and email uniqueness (proactive check plus a fallback on the underlying unique-constraint violation)
+- Hierarchy-based visibility for listing/viewing users, computed via a recursive query over `created_by` (self + all descendants, not just direct children)
+- `PUT` allows updating email, status, and profile fields, but rejects any `role` field outright
+- Status changes (`PATCH .../status`) restricted to ancestors only — a user can never change their own status
+- `DELETE /api/users/:id` intentionally returns `405 Method Not Allowed`
+- Added `userRepository`, `userService`, `userController`, `userValidator`, `userRoutes`, and a shared `utils/httpErrors.js` helper
+- No schema changes; existing `authenticate`/`authorize` middleware reused as-is
+
+Next
+
+- Wallet Management (P05)
+
 ## P03 - Authentication & Authorization
 
 Date:

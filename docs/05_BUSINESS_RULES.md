@@ -50,3 +50,8 @@ This is the authoritative list of business rules for the platform. Every service
 ## Notifications
 
 - BR-28: Users are notified of account creation, point transfers, password changes, account status updates, and game completion events that concern them.
+
+## Account Integrity
+
+- BR-29: Usernames and email addresses must be unique across all accounts.
+- BR-30: Creating a user account also creates that user's profile and wallet in the same transaction — all three rows are committed together or none are (Super Admin is the sole exception, per FR-3.1, and is bootstrapped without a wallet).
