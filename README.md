@@ -81,6 +81,20 @@ Authentication uses JWT (issuance/verification) and bcrypt (password hashing) �
    ```
 5. **Change the default password before any real deployment** — see the production checklist in [`docs/09_DEPLOYMENT.md`](docs/09_DEPLOYMENT.md).
 
+## User Management
+
+Accounts are created only by the tier directly above them in the hierarchy (Super Admin → Level 1 → Level 2 → Level 3 → Player) — there is no public self-registration. Creating a user also creates their profile and wallet in the same transaction. Full endpoint list: [`docs/04_API_SPEC.md`](docs/04_API_SPEC.md).
+
+Example: the seeded Super Admin creates a Level 1 account:
+```bash
+curl -X POST http://localhost:5000/api/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <super_admin token>" \
+  -d '{"username":"level1_alice","email":"alice@example.com","password":"Password123","role":"level_1"}'
+```
+
+Each user can list and view only themselves and their own descendants (`GET /api/users`, `GET /api/users/:id`). Profile and email updates go through `PUT /api/users/:id`; role changes are never accepted there. Freezing/reactivating an account is a separate, ancestor-only action (`PATCH /api/users/:id/status`) — a user can never change their own status. Deletion is not implemented (`DELETE` returns `405`).
+
 ## Development Workflow
 
 See [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md) for the layered architecture and [`CLAUDE.md`](CLAUDE.md) for coding standards and development rules. Git branching and commit conventions are documented at the bottom of `CLAUDE.md`.

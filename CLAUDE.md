@@ -97,7 +97,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**P04 — User Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
+**P05 — Wallet Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
 
 ## Completed Phases
 
@@ -105,10 +105,11 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - **P01** — Project scaffolding (frontend and backend run independently, no business logic).
 - **P02** — Database foundation (11 tables, migrations, seeds, `schema.sql`, connection verification on startup).
 - **P03** — Authentication & Authorization (`POST /api/auth/login`, `GET /api/auth/me`, JWT, bcrypt, `authenticate`/`authorize` middleware).
+- **P04** — User Management (`POST/GET /api/users`, `GET/PUT /api/users/:id`, `PATCH /api/users/:id/status`; hierarchy-restricted creation, atomic profile/wallet creation, recursive descendant visibility, ancestor-only status changes).
 
 ## Next Phase
 
-**P04 — User management.** Account creation within the hierarchy (FR-2.1–FR-2.6): a role creates accounts only in the tier directly beneath it, profile management, and freeze/activate. Builds directly on the `authenticate`/`authorize` middleware from P03 — no new authentication work expected.
+**P05 — Wallet management.** Balance retrieval, downward-only point transfers, and transaction history (FR-3.1–FR-3.5). Builds on the hierarchy visibility rules established in P04 — expect the same self-or-descendant checks to govern who can transfer to whom.
 
 ## Important Constraints
 
