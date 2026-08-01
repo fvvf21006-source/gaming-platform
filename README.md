@@ -95,6 +95,19 @@ curl -X POST http://localhost:5000/api/users \
 
 Each user can list and view only themselves and their own descendants (`GET /api/users`, `GET /api/users/:id`). Profile and email updates go through `PUT /api/users/:id`; role changes are never accepted there. Freezing/reactivating an account is a separate, ancestor-only action (`PATCH /api/users/:id/status`) — a user can never change their own status. Deletion is not implemented (`DELETE` returns `405`).
 
+## Wallet Management
+
+Every non-Super-Admin user gets a wallet automatically when their account is created (see User Management above) — there is no separate "create wallet" step. Super Admin has no wallet (`GET /api/wallet` returns `404` for that account) and configures balances directly at the database level. Full endpoint list: [`docs/04_API_SPEC.md`](docs/04_API_SPEC.md).
+
+Points move only downward, one hierarchy tier at a time, and only to an account the sender directly created — never sideways, never to a grandchild, never skipping a tier. Example: a Level 1 account transfers points to one of its own Level 2 accounts:
+```bash
+curl -X POST http://localhost:5000/api/wallet/transfer \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <level 1 token>" \
+  -d '{"recipientId":"<a level 2 user this account created>","amount":100}'
+```
+A transfer is rejected if the sender doesn't have enough balance, targets themselves, targets a non-descendant, or either party is frozen. Every successful transfer debits the sender, credits the recipient, and records one `wallet_transactions` row, all in a single atomic database transaction — if any part fails, nothing is written. View history with `GET /api/wallet/transactions` (newest first).
+
 ## Development Workflow
 
 See [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md) for the layered architecture and [`CLAUDE.md`](CLAUDE.md) for coding standards and development rules. Git branching and commit conventions are documented at the bottom of `CLAUDE.md`.

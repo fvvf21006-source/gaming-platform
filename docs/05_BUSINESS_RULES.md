@@ -23,6 +23,7 @@ This is the authoritative list of business rules for the platform. Every service
 - BR-14: Every point transfer creates a permanent, immutable transaction record.
 - BR-15: Players consume points only by starting a game session; they cannot transfer points to any other account.
 - BR-16: Virtual points carry no real-world monetary value and cannot be purchased with, or exchanged for, real currency at any point in the system.
+- BR-31: A transfer's recipient must be an account the sender directly created (i.e. the sender is that account's immediate parent) — not merely any user at the tier below, and not a more distant descendant.
 
 ## Account Status
 

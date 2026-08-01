@@ -97,7 +97,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**P05 — Wallet Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
+**P06 — Game Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
 
 ## Completed Phases
 
@@ -106,10 +106,11 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - **P02** — Database foundation (11 tables, migrations, seeds, `schema.sql`, connection verification on startup).
 - **P03** — Authentication & Authorization (`POST /api/auth/login`, `GET /api/auth/me`, JWT, bcrypt, `authenticate`/`authorize` middleware).
 - **P04** — User Management (`POST/GET /api/users`, `GET/PUT /api/users/:id`, `PATCH /api/users/:id/status`; hierarchy-restricted creation, atomic profile/wallet creation, recursive descendant visibility, ancestor-only status changes).
+- **P05** — Wallet Management (`GET /api/wallet`, `POST /api/wallet/transfer`, `GET /api/wallet/transactions`; transfers restricted to the sender's own direct child, atomic debit/credit/transaction-record, frozen-account checks re-fetched fresh rather than trusted from the JWT).
 
 ## Next Phase
 
-**P05 — Wallet management.** Balance retrieval, downward-only point transfers, and transaction history (FR-3.1–FR-3.5). Builds on the hierarchy visibility rules established in P04 — expect the same self-or-descendant checks to govern who can transfer to whom.
+**P06 — Game management.** Game catalog, session start/completion, and gameplay history (FR-4.1–FR-4.4). Game sessions deduct points directly (`game_sessions.points_spent`), not via `wallet_transactions` — see the wallet-flow explanation in `docs/ER_DIAGRAM.md` for why those are deliberately separate.
 
 ## Important Constraints
 

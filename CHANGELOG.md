@@ -1,5 +1,24 @@
 # Changelog
 
+## P05 - Wallet Management
+
+Date:
+YYYY-MM-DD
+
+Completed
+
+- Implemented `GET /api/wallet`, `POST /api/wallet/transfer`, `GET /api/wallet/transactions`
+- Transfer recipient must be an account the sender directly created (`created_by` check) — one hierarchy tier down, the sender's own child specifically, not any user at that tier and not a more distant descendant
+- Sender and recipient are re-fetched fresh from the database on every transfer (never trusted from the JWT), so a frozen account can't transfer or receive points even with a still-valid, previously-issued token (BR-18)
+- Self-transfers rejected; Players cannot transfer (route-level `authorize` plus a service-layer check)
+- Debit, credit, and the `wallet_transactions` insert happen in a single atomic database transaction; the debit is one conditional `UPDATE ... WHERE balance >= amount`, making the sufficient-balance check race-safe without explicit row locking
+- Added `walletRepository`, `walletService`, `walletController`, `walletValidator`, `walletRoutes`; reused `userRepository.findUserById` rather than duplicating user lookups
+- No schema changes — `wallets` and `wallet_transactions` already existed from P02
+
+Next
+
+- Game Management (P06)
+
 ## P04 - User Management
 
 Date:
