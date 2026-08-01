@@ -102,27 +102,27 @@ This document describes the expected REST API structure by module. It does not d
 
 ## Wallet Module
 
-### GET /api/wallet/balance
-- **Purpose:** Retrieve the caller's current point balance.
+### GET /api/wallet
+- **Purpose:** Retrieve the caller's own wallet.
+- **Method:** GET
+- **Authentication:** Required (any role with a wallet — not Super Admin)
+- **Expected Request:** none
+- **Expected Response:** `{ wallet: { id, userId, balance, createdAt, updatedAt } }`
+- **Possible Errors:** 401 unauthorized, 404 this account has no wallet (Super Admin, per FR-3.1)
+
+### POST /api/wallet/transfer
+- **Purpose:** Transfer points to an account the caller directly created (one hierarchy tier down, their own child — not any user at that tier, and not a more distant descendant).
+- **Method:** POST
+- **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
+- **Expected Request:** `{ recipientId, amount }` — `amount` must be a positive integer
+- **Expected Response:** `{ transaction: { id, senderId, recipientId, amount, senderBalanceAfter, recipientBalanceAfter, createdAt } }`
+- **Possible Errors:** 400 invalid `recipientId`/`amount`, 401 unauthorized, 403 sender is a Player, sender or recipient frozen, self-transfer, or recipient not the sender's own child, 404 sender or recipient not found, 409 insufficient balance
+
+### GET /api/wallet/transactions
+- **Purpose:** View the caller's own transaction history (sent or received), newest first.
 - **Method:** GET
 - **Authentication:** Required (any role with a wallet)
 - **Expected Request:** none
-- **Expected Response:** `{ balance }`
-- **Possible Errors:** 401 unauthorized
-
-### POST /api/wallet/transfer
-- **Purpose:** Transfer points to a direct child account.
-- **Method:** POST
-- **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3)
-- **Expected Request:** `{ recipientId, amount }`
-- **Expected Response:** `{ transactionId, senderBalance, recipientBalance }`
-- **Possible Errors:** 400 invalid amount, 401 unauthorized, 403 recipient not a direct child, 409 insufficient balance
-
-### GET /api/wallet/transactions
-- **Purpose:** View the caller's transaction history.
-- **Method:** GET
-- **Authentication:** Required (any role with a wallet)
-- **Expected Request:** query params for pagination/date range
 - **Expected Response:** `{ items: [...], total }`
 - **Possible Errors:** 401 unauthorized
 
