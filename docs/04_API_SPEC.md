@@ -131,34 +131,34 @@ This document describes the expected REST API structure by module. It does not d
 ## Game Module
 
 ### GET /api/games
-- **Purpose:** List available arcade games and their point cost.
+- **Purpose:** List active arcade games and their point cost.
 - **Method:** GET
-- **Authentication:** Required (Player)
+- **Authentication:** Required (Player only)
 - **Expected Request:** none
-- **Expected Response:** `{ items: [{ id, name, pointCost }] }`
-- **Possible Errors:** 401 unauthorized
+- **Expected Response:** `{ items: [{ id, name, description, pointCost, category }], total }`
+- **Possible Errors:** 401 unauthorized, 403 non-Player role
 
 ### POST /api/games/:id/play
-- **Purpose:** Start a game session; deducts required points.
+- **Purpose:** Start a game session; deducts the game's point cost from the caller's wallet.
 - **Method:** POST
-- **Authentication:** Required (Player)
+- **Authentication:** Required (Player only)
 - **Expected Request:** none
-- **Expected Response:** `{ sessionId, remainingBalance }`
-- **Possible Errors:** 401 unauthorized, 404 game not found, 409 insufficient balance
+- **Expected Response:** `{ session: { id, userId, gameId, gameName, pointsSpent, score, status, startedAt, completedAt, remainingBalance } }`
+- **Possible Errors:** 400 invalid `id`, 401 unauthorized, 403 non-Player role or frozen account, 404 game not found or inactive, 409 insufficient balance
 
 ### POST /api/games/sessions/:sessionId/complete
 - **Purpose:** Record the result of a completed game session.
 - **Method:** POST
 - **Authentication:** Required (Player, own session only)
-- **Expected Request:** `{ score }`
-- **Expected Response:** `{ sessionId, score, recordedAt }`
-- **Possible Errors:** 400 invalid score, 401 unauthorized, 403 not own session, 404 session not found
+- **Expected Request:** `{ score }` — must be a non-negative integer
+- **Expected Response:** `{ session: { id, userId, gameId, pointsSpent, score, status, startedAt, completedAt } }`
+- **Possible Errors:** 400 invalid `sessionId`/`score`, 401 unauthorized, 403 not own session, 404 session not found, 409 session already completed or abandoned
 
 ### GET /api/games/history
-- **Purpose:** View the Player's own gameplay history.
+- **Purpose:** View the caller's own gameplay history, newest first.
 - **Method:** GET
-- **Authentication:** Required (Player)
-- **Expected Request:** query params for pagination/date range
+- **Authentication:** Required (Player only)
+- **Expected Request:** none
 - **Expected Response:** `{ items: [...], total }`
 - **Possible Errors:** 401 unauthorized
 
