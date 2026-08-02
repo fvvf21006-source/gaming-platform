@@ -83,4 +83,5 @@ Every table uses a UUID surrogate primary key (`id`), generated with `gen_random
 - `001_seed_roles.sql` populates the five fixed hierarchy roles.
 - `002_seed_admin_user.sql` bootstraps the single initial Super Admin account, with a real bcrypt hash as of P03 (username `super_admin`, documented default password in `README.md`).
 - `003_seed_system_settings.sql` populates baseline platform configuration.
+- `004_seed_game_categories.sql` and `005_seed_games.sql` (P06) populate a minimal, active game catalog — there is no admin catalog-management endpoint, so a fresh clone would otherwise have no games to play.
 - Seed scripts are for local/development use only and must never run against production; production is bootstrapped only with the initial Super Admin account, whose password must be rotated immediately (see `09_DEPLOYMENT.md`).

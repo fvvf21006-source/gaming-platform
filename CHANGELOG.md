@@ -1,5 +1,26 @@
 # Changelog
 
+## P06 - Game Management
+
+Date:
+YYYY-MM-DD
+
+Completed
+
+- Implemented `GET /api/games`, `POST /api/games/:id/play`, `POST /api/games/sessions/:sessionId/complete`, `GET /api/games/history` — all Player-only
+- Starting a session atomically debits the game's point cost from the player's wallet and creates the `game_sessions` row, using the same conditional `UPDATE ... WHERE balance >= cost` guard pattern P05 established for wallet transfers
+- The point deduction is recorded on `game_sessions.points_spent` directly, not as a `wallet_transactions` row, per the existing wallet/game separation documented in `ER_DIAGRAM.md`
+- A frozen player is blocked from starting a session (BR-32) — the player is re-fetched fresh from the database on every request rather than trusted from the JWT, extending the same BR-18 pattern P05 used for transfers
+- A session can only be completed once, by its own owner, and only while still `in_progress` (BR-33); a conditional `UPDATE ... WHERE status = 'in_progress'` guards against double-completion and race conditions
+- Inactive or nonexistent games return 404 on `/play`
+- Added `gameRepository`, `gameService`, `gameController`, `gameValidator`, `gameRoutes`; reused `userRepository.findUserById` for the frozen check rather than duplicating user lookups
+- Added two new seed files (`004_seed_game_categories.sql`, `005_seed_games.sql`) populating a minimal, active game catalog — three categories and three games — since there is no admin catalog-management endpoint and a fresh clone would otherwise have nothing to play
+- No schema changes — `game_categories`, `games`, and `game_sessions` already existed from P02
+
+Next
+
+- Reporting, Notifications & Audit Log Endpoints (P07)
+
 ## P05 - Wallet Management
 
 Date:

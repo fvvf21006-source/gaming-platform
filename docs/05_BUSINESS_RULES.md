@@ -36,6 +36,8 @@ This is the authoritative list of business rules for the platform. Every service
 - BR-20: A Player may start a game session only if their wallet balance meets or exceeds the game's point cost.
 - BR-21: Required points are deducted at the start of the game session, not at completion.
 - BR-22: Every completed game session records the resulting score.
+- BR-32: A frozen account cannot start a game session (extends BR-18); the player's status is re-checked fresh from the database on every request, never trusted from the JWT alone.
+- BR-33: A session can only be completed while it is still in_progress — a session that is already completed or abandoned cannot be completed again.
 
 ## Permissions & Authorization
 

@@ -97,7 +97,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**P06 — Game Management** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
+**P07 — Reporting, Notifications & Audit Log Endpoints** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
 
 ## Completed Phases
 
@@ -107,10 +107,11 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - **P03** — Authentication & Authorization (`POST /api/auth/login`, `GET /api/auth/me`, JWT, bcrypt, `authenticate`/`authorize` middleware).
 - **P04** — User Management (`POST/GET /api/users`, `GET/PUT /api/users/:id`, `PATCH /api/users/:id/status`; hierarchy-restricted creation, atomic profile/wallet creation, recursive descendant visibility, ancestor-only status changes).
 - **P05** — Wallet Management (`GET /api/wallet`, `POST /api/wallet/transfer`, `GET /api/wallet/transactions`; transfers restricted to the sender's own direct child, atomic debit/credit/transaction-record, frozen-account checks re-fetched fresh rather than trusted from the JWT).
+- **P06** — Game Management (`GET /api/games`, `POST /api/games/:id/play`, `POST /api/games/sessions/:sessionId/complete`, `GET /api/games/history`; atomic wallet-debit-plus-session-creation, frozen-player check re-fetched fresh (BR-32), completion restricted to the session's own owner and only while `in_progress` (BR-33); new seed files for a minimal game catalog).
 
 ## Next Phase
 
-**P06 — Game management.** Game catalog, session start/completion, and gameplay history (FR-4.1–FR-4.4). Game sessions deduct points directly (`game_sessions.points_spent`), not via `wallet_transactions` — see the wallet-flow explanation in `docs/ER_DIAGRAM.md` for why those are deliberately separate.
+**P07 — Reporting, notifications, and audit log endpoints.** FR-5 (point distribution / player activity / login reports), FR-6 (notifications), FR-7 (audit log review). No new tables expected — `audit_logs` and `notifications` already exist from P02 but have never been written to or read from by any endpoint yet.
 
 ## Important Constraints
 

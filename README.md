@@ -108,6 +108,24 @@ curl -X POST http://localhost:5000/api/wallet/transfer \
 ```
 A transfer is rejected if the sender doesn't have enough balance, targets themselves, targets a non-descendant, or either party is frozen. Every successful transfer debits the sender, credits the recipient, and records one `wallet_transactions` row, all in a single atomic database transaction — if any part fails, nothing is written. View history with `GET /api/wallet/transactions` (newest first).
 
+## Game Management
+
+Every endpoint in this module is Player-only. A fresh clone seeds a small, active game catalog (three sample games across three categories) so there's something to play immediately — see `server/database/seeds/004_seed_game_categories.sql` and `005_seed_games.sql`. There is no admin catalog-management endpoint; the catalog is seed data only for now.
+
+Starting a game debits its point cost from the player's wallet and creates a session, atomically — the same pattern as a wallet transfer, but the deduction is recorded on the session itself (`game_sessions.points_spent`), not as a `wallet_transactions` row (see the wallet-flow explanation in `docs/ER_DIAGRAM.md`).
+```bash
+curl -X POST http://localhost:5000/api/games/<game id>/play \
+  -H "Authorization: Bearer <player token>"
+```
+The response includes the new session and the player's remaining balance. A session is rejected if the game doesn't exist or is inactive, the player doesn't have enough balance, or the player's account is frozen. Complete a session with its own score — only the session's owner can complete it, and only once:
+```bash
+curl -X POST http://localhost:5000/api/games/sessions/<session id>/complete \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <player token>" \
+  -d '{"score":750}'
+```
+View your own history with `GET /api/games/history` (newest first).
+
 ## Development Workflow
 
 See [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md) for the layered architecture and [`CLAUDE.md`](CLAUDE.md) for coding standards and development rules. Git branching and commit conventions are documented at the bottom of `CLAUDE.md`.
