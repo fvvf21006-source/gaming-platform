@@ -166,58 +166,80 @@ This document describes the expected REST API structure by module. It does not d
 
 ## Reports Module
 
+All three reports support `?startDate=<ISO 8601>&endDate=<ISO 8601>` (both optional; omitting both returns all-time data) and `?format=json|csv` (defaults to `json`). CSV responses return only the flat `items` list (no `summary`) as `text/csv` with a `Content-Disposition: attachment` header.
+
 ### GET /api/reports/point-distribution
-- **Purpose:** Report on point distribution within the caller's hierarchy.
+- **Purpose:** Report on point transfers within the caller's own hierarchy (self + every descendant, found the same way `GET /api/users` scopes visibility — not just direct children).
 - **Method:** GET
-- **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3)
-- **Expected Request:** query params (date range, format)
-- **Expected Response:** report data or file (CSV/PDF)
-- **Possible Errors:** 401 unauthorized, 403 not permitted
+- **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3 — not Player)
+- **Expected Request:** `?startDate?&endDate?&format?`
+- **Expected Response:** `{ summary: { totalAmount, transactionCount }, items: [{ id, type, senderId, senderUsername, recipientId, recipientUsername, amount, createdAt }] }` — `type` is currently always `"transfer"` (the only kind of `wallet_transactions` row that exists today), included so a future transaction type can be added without changing this report's shape.
+- **Possible Errors:** 400 invalid `startDate`/`endDate`/`format`, 401 unauthorized, 403 Player role
 
 ### GET /api/reports/player-activity
-- **Purpose:** Report on player activity within the caller's hierarchy.
+- **Purpose:** Report on game session activity within the caller's own hierarchy.
 - **Method:** GET
-- **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3)
-- **Expected Request:** query params (date range, format)
-- **Expected Response:** report data or file
-- **Possible Errors:** 401 unauthorized, 403 not permitted
+- **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3 — not Player)
+- **Expected Request:** `?startDate?&endDate?&format?`
+- **Expected Response:** `{ summary: { sessionCount, totalPointsSpent, completed, inProgress, abandoned }, items: [{ id, userId, username, gameId, gameName, pointsSpent, score, status, startedAt, completedAt }] }`
+- **Possible Errors:** 400 invalid `startDate`/`endDate`/`format`, 401 unauthorized, 403 Player role
 
 ### GET /api/reports/login
-- **Purpose:** Report on login activity.
+- **Purpose:** Report on login activity, platform-wide (not hierarchy-scoped).
 - **Method:** GET
-- **Authentication:** Required (Super Admin)
-- **Expected Request:** query params (date range, format)
-- **Expected Response:** report data or file
-- **Possible Errors:** 401 unauthorized, 403 not permitted
+- **Authentication:** Required (Super Admin only)
+- **Expected Request:** `?startDate?&endDate?&format?`
+- **Expected Response:** `{ summary: { successCount, failureCount }, items: [{ id, userId, username, action, reason, attemptedUsername, createdAt }] }` — `userId`/`username` are `null` for a failed attempt against a username that doesn't exist (`attemptedUsername` captures it instead); `reason` is one of `invalid_credentials` or `account_frozen` for failures, `null` for successes.
+- **Possible Errors:** 400 invalid `startDate`/`endDate`/`format`, 401 unauthorized, 403 non-Super-Admin role
 
 ---
 
 ## Notifications Module
 
+Notification types: `account_created`, `wallet_transfer`, `password_changed`, `account_status_changed`, `game_completed`. All five are defined; `password_changed` has no automatic trigger yet, since there is no password-change endpoint anywhere in the API (FR-2.3 remains unimplemented) — it will fire automatically once that endpoint exists, without further changes to this module.
+
 ### GET /api/notifications
-- **Purpose:** Retrieve the caller's notifications.
+- **Purpose:** Retrieve the caller's own notifications, newest first.
 - **Method:** GET
 - **Authentication:** Required (any role)
-- **Expected Request:** query params for pagination
-- **Expected Response:** `{ items: [...], total }`
+- **Expected Request:** none
+- **Expected Response:** `{ items: [{ id, type, message, isRead, createdAt }], total }`
 - **Possible Errors:** 401 unauthorized
 
 ### PATCH /api/notifications/:id/read
-- **Purpose:** Mark a notification as read.
+- **Purpose:** Mark one of the caller's own notifications as read.
 - **Method:** PATCH
 - **Authentication:** Required (owner of the notification)
 - **Expected Request:** none
-- **Expected Response:** `{ id, read: true }`
-- **Possible Errors:** 401 unauthorized, 403 not owner, 404 not found
+- **Expected Response:** `{ notification: { id, type, message, isRead, createdAt } }`
+- **Possible Errors:** 400 invalid `id`, 401 unauthorized, 403 not owner, 404 not found
+
+### PATCH /api/notifications/read-all
+- **Purpose:** Mark every unread notification belonging to the caller as read. Safe to call repeatedly — returns `{ updatedCount: 0 }` if there was nothing to update.
+- **Method:** PATCH
+- **Authentication:** Required (any role)
+- **Expected Request:** none
+- **Expected Response:** `{ updatedCount }`
+- **Possible Errors:** 401 unauthorized
 
 ---
 
 ## Audit Module
 
-### GET /api/audit-logs
-- **Purpose:** Retrieve audit log entries within the caller's hierarchy scope.
+Read-only by design (BR-27) — there is no update or delete endpoint for audit log entries anywhere in the API. Entries are written for logins (`login_success`, `login_failed`), user management (`user_created`, `user_updated`, `account_frozen`, `account_activated`), wallet transfers (`wallet_transfer`), and game sessions (`game_started`, `game_completed`) — see BR-25/BR-26. `password_changed` is not yet written, since no password-change endpoint exists anywhere in the API (FR-2.3 is unimplemented).
+
+### GET /api/audit
+- **Purpose:** Retrieve audit log entries, platform-wide (not hierarchy-scoped).
 - **Method:** GET
-- **Authentication:** Required (Super Admin, or scoped for Level 1–3 over their own hierarchy)
-- **Expected Request:** query params (date range, action type, actor, pagination)
-- **Expected Response:** `{ items: [...], total }`
-- **Possible Errors:** 401 unauthorized, 403 not permitted
+- **Authentication:** Required (Super Admin only)
+- **Expected Request:** `?actorId?&action?&entityType?&startDate?&endDate?` — all optional; omitted filters are not applied
+- **Expected Response:** `{ items: [{ id, actorId, username, action, entityType, entityId, metadata, createdAt }], total }`
+- **Possible Errors:** 400 invalid filter value, 401 unauthorized, 403 non-Super-Admin role
+
+### GET /api/audit/:id
+- **Purpose:** Retrieve a single audit log entry.
+- **Method:** GET
+- **Authentication:** Required (Super Admin only)
+- **Expected Request:** none
+- **Expected Response:** `{ entry: { id, actorId, username, action, entityType, entityId, metadata, createdAt } }`
+- **Possible Errors:** 400 invalid `id`, 401 unauthorized, 403 non-Super-Admin role, 404 not found

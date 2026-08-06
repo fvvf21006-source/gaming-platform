@@ -52,9 +52,17 @@ This is the authoritative list of business rules for the platform. Every service
 
 ## Notifications
 
-- BR-28: Users are notified of account creation, point transfers, password changes, account status updates, and game completion events that concern them.
+- BR-28: Users are notified of account creation, point transfers, account status updates, and game completion events that concern them. Notification creation is best-effort — a failure to create a notification never blocks or fails the underlying action (account creation, a transfer, a completed session), the same defensive policy BR-35's login audit logging uses.
+- BR-36: A notification belongs to exactly one user and can only be marked read by that user — not by an ancestor, not by anyone else, regardless of hierarchy.
+- BR-37: Password-change notifications are not yet triggered by anything — there is no password-change action anywhere in the system yet (FR-2.3 is unimplemented). The notification type exists so it is ready the moment that action is built.
 
 ## Account Integrity
 
 - BR-29: Usernames and email addresses must be unique across all accounts.
 - BR-30: Creating a user account also creates that user's profile and wallet in the same transaction — all three rows are committed together or none are (Super Admin is the sole exception, per FR-3.1, and is bootstrapped without a wallet).
+
+## Reporting
+
+- BR-34: The point-distribution and player-activity reports are scoped to the requester's own hierarchy (self + all descendants) — the same visibility rule as BR-8, not the whole platform. Only the login report is platform-wide, and only for Super Admin.
+- BR-35: Every login attempt — successful or failed — creates an audit log entry (fulfills BR-26 for logins specifically). A failed attempt against a username that does not exist has no `actor_id` (there is no user to attribute it to); the attempted username is preserved separately so the attempt is still reviewable.
+- BR-38: Audit log review is Super Admin only and platform-wide — unlike the point-distribution and player-activity reports, there is no hierarchy-scoped view of audit logs for Level 1–3.

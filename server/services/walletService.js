@@ -5,6 +5,8 @@
 import * as walletRepository from '../repositories/walletRepository.js';
 import * as userRepository from '../repositories/userRepository.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
+import { createNotification } from './notificationService.js';
+import { logAction } from './auditService.js';
 
 function toPublicWallet(row) {
   return {
@@ -103,6 +105,26 @@ export async function transferPoints({ senderId, recipientId, amount }) {
     }
     throw err;
   }
+
+  await createNotification({
+    userId: senderId,
+    type: 'wallet_transfer',
+    message: `You sent ${amount} points to ${recipient.username}.`,
+  });
+
+  await createNotification({
+    userId: recipientId,
+    type: 'wallet_transfer',
+    message: `You received ${amount} points from ${sender.username}.`,
+  });
+
+  await logAction({
+    actorId: senderId,
+    action: 'wallet_transfer',
+    entityType: 'wallet_transaction',
+    entityId: transaction.id,
+    metadata: { sender: sender.username, recipient: recipient.username, amount },
+  });
 
   return toPublicTransaction(transaction);
 }
