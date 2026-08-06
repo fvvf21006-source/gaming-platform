@@ -5,6 +5,8 @@
 import * as gameRepository from '../repositories/gameRepository.js';
 import * as userRepository from '../repositories/userRepository.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
+import { createNotification } from './notificationService.js';
+import { logAction } from './auditService.js';
 
 function toPublicGame(row) {
   return {
@@ -82,6 +84,14 @@ export async function playGame({ userId, gameId }) {
     throw err;
   }
 
+  await logAction({
+    actorId: userId,
+    action: 'game_started',
+    entityType: 'game_session',
+    entityId: result.session.id,
+    metadata: { game: game.name, cost: game.point_cost },
+  });
+
   return {
     ...toPublicSession({ ...result.session, game_name: game.name }),
     remainingBalance: result.walletBalance,
@@ -116,6 +126,22 @@ export async function completeSession({ userId, sessionId, score }) {
     // request between the check above and this update.
     throw conflict('Session is not in progress');
   }
+
+  const game = await gameRepository.findGameById(session.game_id);
+
+  await createNotification({
+    userId,
+    type: 'game_completed',
+    message: `You completed ${game?.name ?? 'a game'} with a score of ${score}.`,
+  });
+
+  await logAction({
+    actorId: userId,
+    action: 'game_completed',
+    entityType: 'game_session',
+    entityId: sessionId,
+    metadata: { score },
+  });
 
   return toPublicSession(updated);
 }

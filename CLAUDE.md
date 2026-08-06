@@ -97,7 +97,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**P07 — Reporting, Notifications & Audit Log Endpoints** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
+**P08 — Frontend Implementation** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
 
 ## Completed Phases
 
@@ -108,10 +108,14 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - **P04** — User Management (`POST/GET /api/users`, `GET/PUT /api/users/:id`, `PATCH /api/users/:id/status`; hierarchy-restricted creation, atomic profile/wallet creation, recursive descendant visibility, ancestor-only status changes).
 - **P05** — Wallet Management (`GET /api/wallet`, `POST /api/wallet/transfer`, `GET /api/wallet/transactions`; transfers restricted to the sender's own direct child, atomic debit/credit/transaction-record, frozen-account checks re-fetched fresh rather than trusted from the JWT).
 - **P06** — Game Management (`GET /api/games`, `POST /api/games/:id/play`, `POST /api/games/sessions/:sessionId/complete`, `GET /api/games/history`; atomic wallet-debit-plus-session-creation, frozen-player check re-fetched fresh (BR-32), completion restricted to the session's own owner and only while `in_progress` (BR-33); new seed files for a minimal game catalog).
+- **P07** — Reporting, Notifications & Audit Log Review, complete:
+  - Reporting: `GET /api/reports/point-distribution`, `GET /api/reports/player-activity` (hierarchy-scoped), `GET /api/reports/login` (platform-wide, Super-Admin-only). JSON/CSV output. Login audit logging wired up first via `auditRepository.js`, then extended to cover user creation/updates/status changes, wallet transfers, and game sessions via a shared `auditService.logAction()` helper and one-line additive calls into `userService`, `walletService`, `gameService`.
+  - Notifications: `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all`. Four of five notification types auto-trigger via minimal hooks added to `userService`, `walletService`, `gameService` — all best-effort/non-blocking, same policy as login audit logging.
+  - Audit Log Review: `GET /api/audit`, `GET /api/audit/:id`, Super-Admin-only, filterable, read-only by design (BR-27).
 
 ## Next Phase
 
-**P07 — Reporting, notifications, and audit log endpoints.** FR-5 (point distribution / player activity / login reports), FR-6 (notifications), FR-7 (audit log review). No new tables expected — `audit_logs` and `notifications` already exist from P02 but have never been written to or read from by any endpoint yet.
+**P08 — Frontend implementation.** Build the React frontend against the now-complete backend API (P00–P07). No backend endpoints are expected to change as part of this phase unless the frontend surfaces a genuine gap.
 
 ## Important Constraints
 

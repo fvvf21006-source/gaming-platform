@@ -126,6 +126,34 @@ curl -X POST http://localhost:5000/api/games/sessions/<session id>/complete \
 ```
 View your own history with `GET /api/games/history` (newest first).
 
+## Reporting
+
+Three read-only reports, all open to every role except Player (login report is Super Admin only). Point-distribution and player-activity are scoped to the caller's own hierarchy — a Level 3 only ever sees their own descendant subtree, never the whole platform.
+```bash
+curl "http://localhost:5000/api/reports/point-distribution?startDate=2026-01-01&endDate=2026-01-31" \
+  -H "Authorization: Bearer <token>"
+```
+Add `&format=csv` to any report for a downloadable CSV instead of JSON (PDF export is deferred). Every login attempt — successful or failed — is now recorded to `audit_logs`, which is what powers `GET /api/reports/login`; this only covers activity from when this module shipped forward, since nothing wrote to that table before.
+
+## Notifications
+
+Account creation, wallet transfers, account status changes, and completed game sessions all automatically generate a notification for whoever the event concerns — no separate action needed. A transfer notifies both sender and recipient; a status change notifies the target account, never the admin who changed it.
+```bash
+curl http://localhost:5000/api/notifications -H "Authorization: Bearer <token>"
+curl -X PATCH http://localhost:5000/api/notifications/<id>/read -H "Authorization: Bearer <token>"
+curl -X PATCH http://localhost:5000/api/notifications/read-all -H "Authorization: Bearer <token>"
+```
+Notification creation is best-effort — if it fails for any reason, the action that triggered it (creating a user, transferring points, completing a session) still succeeds; the failure is only logged server-side, never surfaced to the caller.
+
+## Audit Log Review
+
+Super Admin only. `audit_logs` now records logins, user creation/updates/status changes, wallet transfers, and game session start/completion (see `docs/05_BUSINESS_RULES.md` BR-25/BR-26) — all best-effort, so an audit write failure never blocks the real action.
+```bash
+curl "http://localhost:5000/api/audit?action=login_failed&startDate=2026-01-01" \
+  -H "Authorization: Bearer <super admin token>"
+```
+Supports filtering by `actorId`, `action`, `entityType`, and `startDate`/`endDate`, all optional and combinable. Read-only — there is no endpoint to modify or delete an entry, by design.
+
 ## Development Workflow
 
 See [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md) for the layered architecture and [`CLAUDE.md`](CLAUDE.md) for coding standards and development rules. Git branching and commit conventions are documented at the bottom of `CLAUDE.md`.

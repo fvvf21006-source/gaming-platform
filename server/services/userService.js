@@ -5,6 +5,8 @@
 import * as userRepository from '../repositories/userRepository.js';
 import { hashPassword } from '../utils/password.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
+import { createNotification } from './notificationService.js';
+import { logAction } from './auditService.js';
 
 // Ordered by hierarchy_level (0 = Super Admin ... 4 = Player). A role
 // may only create the role immediately after it in this list (BR-1
@@ -111,6 +113,21 @@ export async function createUser({
   }
 
   const full = await userRepository.findUserById(created.id);
+
+  await createNotification({
+    userId: created.id,
+    type: 'account_created',
+    message: 'Your account has been created.',
+  });
+
+  await logAction({
+    actorId: requesterId,
+    action: 'user_created',
+    entityType: 'user',
+    entityId: created.id,
+    metadata: { creator: requesterId, role: expectedRole },
+  });
+
   return toPublicUser(full);
 }
 
@@ -197,6 +214,36 @@ export async function updateUser(requesterId, targetId, updates) {
     throw err;
   }
 
+  if (updates.status !== undefined && updates.status !== target.status) {
+    await createNotification({
+      userId: targetId,
+      type: 'account_status_changed',
+      message: `Your account status has been changed to "${updates.status}".`,
+    });
+
+    await logAction({
+      actorId: requesterId,
+      action: updates.status === 'frozen' ? 'account_frozen' : 'account_activated',
+      entityType: 'user',
+      entityId: targetId,
+      metadata: { previousStatus: target.status, newStatus: updates.status },
+    });
+  }
+
+  const nonStatusFields = ['email', 'fullName', 'displayName', 'avatarUrl'].filter(
+    (field) => updates[field] !== undefined
+  );
+
+  if (nonStatusFields.length > 0) {
+    await logAction({
+      actorId: requesterId,
+      action: 'user_updated',
+      entityType: 'user',
+      entityId: targetId,
+      metadata: { updatedFields: nonStatusFields },
+    });
+  }
+
   return toPublicUser(updated);
 }
 
@@ -225,5 +272,20 @@ export async function updateUserStatus(requesterId, targetId, status) {
   }
 
   const updated = await userRepository.updateUserStatus(targetId, status);
+
+  await createNotification({
+    userId: targetId,
+    type: 'account_status_changed',
+    message: `Your account status has been changed to "${status}".`,
+  });
+
+  await logAction({
+    actorId: requesterId,
+    action: status === 'frozen' ? 'account_frozen' : 'account_activated',
+    entityType: 'user',
+    entityId: targetId,
+    metadata: { previousStatus: target.status, newStatus: status },
+  });
+
   return toPublicUser(updated);
 }
