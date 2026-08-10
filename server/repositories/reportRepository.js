@@ -36,6 +36,7 @@ export async function getPointDistributionTransactions({ requesterId, startDate,
        t.recipient_id,
        recipient.username AS recipient_username,
        t.amount,
+       t.transaction_type,
        t.created_at
      FROM wallet_transactions t
      JOIN users sender ON sender.id = t.sender_id

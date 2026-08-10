@@ -11,7 +11,7 @@ This document describes the expected REST API structure by module. It does not d
 - **Method:** POST
 - **Authentication:** None
 - **Expected Request:** `{ username, password }`
-- **Expected Response:** `{ token, user: { id, role, ... } }`
+- **Expected Response:** `{ token, user: { id, username, email, role, status, mustChangePassword } }` — `mustChangePassword` is `true` if an administrator reset this account's password (see Users Module) and the user hasn't changed it since; login succeeds either way.
 - **Possible Errors:** 400 invalid input, 401 invalid credentials, 403 account frozen, 429 too many attempts (lockout)
 
 ### GET /api/auth/me
@@ -19,8 +19,16 @@ This document describes the expected REST API structure by module. It does not d
 - **Method:** GET
 - **Authentication:** Required (any authenticated role)
 - **Expected Request:** none (token in header)
-- **Expected Response:** `{ user: { id, username, email, role, status } }`
+- **Expected Response:** `{ user: { id, username, email, role, status, mustChangePassword } }`
 - **Possible Errors:** 401 missing/invalid/expired token, 404 user not found
+
+### PUT /api/auth/change-password
+- **Purpose:** Change the caller's own password. Always clears `mustChangePassword`, regardless of its prior value.
+- **Method:** PUT
+- **Authentication:** Required (any role)
+- **Expected Request:** `{ currentPassword, newPassword }` — `newPassword` must be at least 8 characters and different from `currentPassword`
+- **Expected Response:** `{ message: "Password changed successfully" }`
+- **Possible Errors:** 400 invalid input or new password same as current, 401 unauthorized or current password incorrect
 
 ### POST /api/auth/logout
 - **Purpose:** Invalidate the current session.
@@ -29,22 +37,6 @@ This document describes the expected REST API structure by module. It does not d
 - **Expected Request:** none (token in header)
 - **Expected Response:** `{ success: true }`
 - **Possible Errors:** 401 unauthorized
-
-### POST /api/auth/password-reset/request
-- **Purpose:** Request a password reset.
-- **Method:** POST
-- **Authentication:** None
-- **Expected Request:** `{ username or email }`
-- **Expected Response:** `{ success: true }` (generic, to avoid account enumeration)
-- **Possible Errors:** 400 invalid input
-
-### POST /api/auth/password-reset/confirm
-- **Purpose:** Complete a password reset using a reset token.
-- **Method:** POST
-- **Authentication:** None (token-based)
-- **Expected Request:** `{ token, newPassword }`
-- **Expected Response:** `{ success: true }`
-- **Possible Errors:** 400 invalid/expired token, 400 weak password
 
 ---
 
@@ -90,6 +82,14 @@ This document describes the expected REST API structure by module. It does not d
 - **Expected Response:** `{ user: { ... } }`
 - **Possible Errors:** 401 unauthorized, 403 not permitted (including self), 404 not found
 
+### POST /api/users/:id/reset-password
+- **Purpose:** Reset a user's password to a freshly generated, random temporary password. The administrator never chooses the value — it is always generated server-side and returned exactly once; it is never stored in plaintext anywhere. Sets `mustChangePassword` on the target account.
+- **Method:** POST
+- **Authentication:** Required (an ancestor of the target account, anywhere in the hierarchy — same breadth as administrative point adjustment, not just a direct child; never the account itself — self-service password changes use `PUT /api/auth/change-password` instead)
+- **Expected Request:** none
+- **Expected Response:** `{ temporaryPassword: "..." }`
+- **Possible Errors:** 401 unauthorized, 403 not permitted (including self or Player), 404 not found
+
 ### DELETE /api/users/:id
 - **Purpose:** Not supported. User deletion is intentionally out of scope.
 - **Method:** DELETE
@@ -111,19 +111,27 @@ This document describes the expected REST API structure by module. It does not d
 - **Possible Errors:** 401 unauthorized, 404 this account has no wallet (Super Admin, per FR-3.1)
 
 ### POST /api/wallet/transfer
-- **Purpose:** Transfer points to an account the caller directly created (one hierarchy tier down, their own child — not any user at that tier, and not a more distant descendant).
+- **Purpose:** Transfer points to an account the caller directly created (one hierarchy tier down, their own child — not any user at that tier, and not a more distant descendant). **Super Admin transfers are unlimited** — Super Admin has no wallet and no balance check applies; `senderBalanceAfter` is `null` in the response for these transfers, since there is no real balance to report. Every other role's balance check is unchanged.
 - **Method:** POST
 - **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
 - **Expected Request:** `{ recipientId, amount }` — `amount` must be a positive integer
-- **Expected Response:** `{ transaction: { id, senderId, recipientId, amount, senderBalanceAfter, recipientBalanceAfter, createdAt } }`
-- **Possible Errors:** 400 invalid `recipientId`/`amount`, 401 unauthorized, 403 sender is a Player, sender or recipient frozen, self-transfer, or recipient not the sender's own child, 404 sender or recipient not found, 409 insufficient balance
+- **Expected Response:** `{ transaction: { id, senderId, recipientId, amount, senderBalanceAfter, recipientBalanceAfter, transactionType, createdAt } }` — `transactionType` is `"transfer"` for every row this endpoint creates, including Super Admin's unlimited ones
+- **Possible Errors:** 400 invalid `recipientId`/`amount`, 401 unauthorized, 403 sender is a Player, sender or recipient frozen, self-transfer, or recipient not the sender's own child, 404 sender or recipient not found, 409 insufficient balance (never for Super Admin)
+
+### POST /api/wallet/adjust
+- **Purpose:** Administratively add, remove, or set a user's balance, with a required reason. Not a hierarchy transfer — Super Admin may adjust anyone; Level 1–3 may only adjust someone in their own hierarchy (self or any descendant, not just a direct child).
+- **Method:** POST
+- **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
+- **Expected Request:** `{ userId, operation: "add"|"remove"|"set", amount, reason }` — `amount` must be a positive integer for `add`/`remove`, a non-negative integer for `set`; `reason` is required, max 500 characters
+- **Expected Response:** `{ transaction: { ... } | null, oldBalance, newBalance }` — `transaction` is `null` only when a `set` operation didn't actually change the balance (no `wallet_transactions` row is written for a true no-op)
+- **Possible Errors:** 400 invalid input, 401 unauthorized, 403 target is Super Admin, target outside caller's hierarchy, or caller is a Player, 404 user or wallet not found, 409 adjustment would make the balance negative
 
 ### GET /api/wallet/transactions
 - **Purpose:** View the caller's own transaction history (sent or received), newest first.
 - **Method:** GET
 - **Authentication:** Required (any role with a wallet)
 - **Expected Request:** none
-- **Expected Response:** `{ items: [...], total }`
+- **Expected Response:** `{ items: [...], total }` — each item includes `transactionType`
 - **Possible Errors:** 401 unauthorized
 
 ---
@@ -173,7 +181,7 @@ All three reports support `?startDate=<ISO 8601>&endDate=<ISO 8601>` (both optio
 - **Method:** GET
 - **Authentication:** Required (Super Admin, Level 1, Level 2, Level 3 — not Player)
 - **Expected Request:** `?startDate?&endDate?&format?`
-- **Expected Response:** `{ summary: { totalAmount, transactionCount }, items: [{ id, type, senderId, senderUsername, recipientId, recipientUsername, amount, createdAt }] }` — `type` is currently always `"transfer"` (the only kind of `wallet_transactions` row that exists today), included so a future transaction type can be added without changing this report's shape.
+- **Expected Response:** `{ summary: { totalAmount, transactionCount }, items: [{ id, type, senderId, senderUsername, recipientId, recipientUsername, amount, createdAt }] }` — `type` is `"transfer"` for ordinary hierarchy transfers (including Super Admin's unlimited ones) or `"admin_add"`/`"admin_remove"`/`"admin_set"` for administrative point adjustments (see Wallet Module).
 - **Possible Errors:** 400 invalid `startDate`/`endDate`/`format`, 401 unauthorized, 403 Player role
 
 ### GET /api/reports/player-activity
@@ -196,7 +204,7 @@ All three reports support `?startDate=<ISO 8601>&endDate=<ISO 8601>` (both optio
 
 ## Notifications Module
 
-Notification types: `account_created`, `wallet_transfer`, `password_changed`, `account_status_changed`, `game_completed`. All five are defined; `password_changed` has no automatic trigger yet, since there is no password-change endpoint anywhere in the API (FR-2.3 remains unimplemented) — it will fire automatically once that endpoint exists, without further changes to this module.
+Notification types: `account_created`, `wallet_transfer`, `password_changed`, `password_reset`, `account_status_changed`, `game_completed`, `points_adjusted`. All seven are wired to a real trigger.
 
 ### GET /api/notifications
 - **Purpose:** Retrieve the caller's own notifications, newest first.
@@ -226,7 +234,7 @@ Notification types: `account_created`, `wallet_transfer`, `password_changed`, `a
 
 ## Audit Module
 
-Read-only by design (BR-27) — there is no update or delete endpoint for audit log entries anywhere in the API. Entries are written for logins (`login_success`, `login_failed`), user management (`user_created`, `user_updated`, `account_frozen`, `account_activated`), wallet transfers (`wallet_transfer`), and game sessions (`game_started`, `game_completed`) — see BR-25/BR-26. `password_changed` is not yet written, since no password-change endpoint exists anywhere in the API (FR-2.3 is unimplemented).
+Read-only by design (BR-27) — there is no update or delete endpoint for audit log entries anywhere in the API. Entries are written for logins (`login_success`, `login_failed`), user management (`user_created`, `user_updated`, `account_frozen`, `account_activated`), wallet transfers (`wallet_transfer`), administrative point adjustments (`points_adjusted`), game sessions (`game_started`, `game_completed`), and passwords (`password_changed`, `password_reset`) — see BR-25/BR-26.
 
 ### GET /api/audit
 - **Purpose:** Retrieve audit log entries, platform-wide (not hierarchy-scoped).

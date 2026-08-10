@@ -266,3 +266,55 @@ CREATE TABLE system_settings (
 
 COMMENT ON TABLE system_settings IS 'Key-value platform configuration, editable by administrators without a code deployment.';
 
+-- ==== 012_alter_wallet_transactions_admin_support.sql ====
+-- 012_alter_wallet_transactions_admin_support.sql
+-- P08: Super Admin transfers unlimited points (no wallet, so no
+-- real "balance after" to record) and administrative point
+-- adjustments (add/remove/set — not a peer-to-peer hierarchy
+-- transfer) both need to write a wallet_transactions row that the
+-- existing schema can't quite express as-is. Two small, additive,
+-- backward-compatible changes:
+--
+-- 1. sender_balance_after becomes nullable. Existing rows are
+--    untouched (all currently NOT NULL); NULL now means "the sender
+--    side of this row isn't a real, balance-constrained wallet."
+--    The existing non-negative CHECK constraint already treats NULL
+--    as satisfying the check (SQL NULL comparisons never fail a
+--    CHECK), so it needs no change.
+--
+-- 2. transaction_type distinguishes what kind of row this is.
+--    Defaults every existing and future ordinary transfer to
+--    'transfer' (zero impact on anything already written or already
+--    reading this table, including the P07 reporting module, which
+--    was explicitly built with a placeholder 'transfer' literal in
+--    reportService.js in anticipation of exactly this column).
+
+ALTER TABLE wallet_transactions
+    ALTER COLUMN sender_balance_after DROP NOT NULL;
+
+ALTER TABLE wallet_transactions
+    ADD COLUMN transaction_type VARCHAR(20) NOT NULL DEFAULT 'transfer';
+
+ALTER TABLE wallet_transactions
+    ADD CONSTRAINT chk_wallet_transactions_type
+    CHECK (transaction_type IN ('transfer', 'admin_add', 'admin_remove', 'admin_set'));
+
+COMMENT ON COLUMN wallet_transactions.sender_balance_after IS 'NULL when the sender has no real wallet balance to report (Super Admin unlimited transfers, administrative adjustments).';
+COMMENT ON COLUMN wallet_transactions.transaction_type IS '''transfer'' for ordinary hierarchy transfers (including Super Admin''s unlimited-source ones); ''admin_add''/''admin_remove''/''admin_set'' for administrative point-management adjustments.';
+
+-- ==== 013_alter_users_must_change_password.sql ====
+-- 013_alter_users_must_change_password.sql
+-- P08 Part 5: mandatory password change after an administrative
+-- reset (Part 4). Additive, backward-compatible — every existing
+-- row defaults to false (no forced change for anyone already in
+-- the system), and login/authorization behavior is otherwise
+-- unaffected (a user with this flag set can still log in; only the
+-- response indicates a change is required, per the task spec —
+-- enforcement of an actual redirect is a frontend concern, out of
+-- scope here).
+
+ALTER TABLE users
+    ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN users.must_change_password IS 'Set true by an administrative password reset (Part 4); cleared by the user successfully changing their own password (Part 3). Does not block login by itself.';
+

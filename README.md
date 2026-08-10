@@ -97,7 +97,7 @@ Each user can list and view only themselves and their own descendants (`GET /api
 
 ## Wallet Management
 
-Every non-Super-Admin user gets a wallet automatically when their account is created (see User Management above) — there is no separate "create wallet" step. Super Admin has no wallet (`GET /api/wallet` returns `404` for that account) and configures balances directly at the database level. Full endpoint list: [`docs/04_API_SPEC.md`](docs/04_API_SPEC.md).
+Every non-Super-Admin user gets a wallet automatically when their account is created (see User Management above) — there is no separate "create wallet" step. Super Admin has no wallet (`GET /api/wallet` returns `404` for that account), but can still move points through the API — see below. Full endpoint list: [`docs/04_API_SPEC.md`](docs/04_API_SPEC.md).
 
 Points move only downward, one hierarchy tier at a time, and only to an account the sender directly created — never sideways, never to a grandchild, never skipping a tier. Example: a Level 1 account transfers points to one of its own Level 2 accounts:
 ```bash
@@ -106,7 +106,29 @@ curl -X POST http://localhost:5000/api/wallet/transfer \
   -H "Authorization: Bearer <level 1 token>" \
   -d '{"recipientId":"<a level 2 user this account created>","amount":100}'
 ```
-A transfer is rejected if the sender doesn't have enough balance, targets themselves, targets a non-descendant, or either party is frozen. Every successful transfer debits the sender, credits the recipient, and records one `wallet_transactions` row, all in a single atomic database transaction — if any part fails, nothing is written. View history with `GET /api/wallet/transactions` (newest first).
+A transfer is rejected if the sender doesn't have enough balance, targets themselves, targets a non-descendant, or either party is frozen. Every successful transfer debits the sender, credits the recipient, and records one `wallet_transactions` row, all in a single atomic database transaction — if any part fails, nothing is written. View history with `GET /api/wallet/transactions` (newest first). **Super Admin's transfers are unlimited** — the same endpoint, but with no balance check, since Super Admin has no wallet to check against.
+
+## Administrative Point Management
+
+Beyond ordinary transfers, `POST /api/wallet/adjust` lets an admin add, remove, or set a user's balance directly, with a required reason:
+```bash
+curl -X POST http://localhost:5000/api/wallet/adjust \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin token>" \
+  -d '{"userId":"<target user>","operation":"add","amount":500,"reason":"Tournament reward"}'
+```
+Super Admin may adjust anyone; a Level 1–3 admin may only adjust someone in their own hierarchy (self or any descendant — broader than a transfer's direct-child-only rule). Every adjustment that actually changes the balance creates a `wallet_transactions` row (visible in `GET /api/reports/point-distribution` with `type: "admin_add"`/`"admin_remove"`/`"admin_set"`), an audit log entry, and a notification to the affected user.
+
+## Password Management
+
+Every user can change their own password:
+```bash
+curl -X PUT http://localhost:5000/api/auth/change-password \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"currentPassword":"old","newPassword":"a-new-password"}'
+```
+An ancestor can reset a descendant's password (never their own — use the endpoint above for that): `POST /api/users/:id/reset-password` generates a random temporary password server-side and returns it exactly once — administrators can never choose it, and it's never stored or logged in plaintext. This also sets `mustChangePassword` on the target account, which shows up in their next login response; login still succeeds normally either way, since enforcing an actual redirect is a frontend concern.
 
 ## Game Management
 

@@ -9,11 +9,11 @@ import * as reportRepository from '../repositories/reportRepository.js';
 function toPointDistributionItem(row) {
   return {
     id: row.id,
-    // Literal for now — every wallet_transactions row today is a
-    // hierarchy transfer (BR-10/BR-11). Included so a future
-    // transaction type (e.g. a refund or adjustment) can be added
-    // to the schema later without changing this report's shape.
-    type: 'transfer',
+    // Was a hardcoded literal before P08 added the real column —
+    // see the migration comment in
+    // 012_alter_wallet_transactions_admin_support.sql. Response
+    // shape is unchanged; the value just comes from the database now.
+    type: row.transaction_type,
     senderId: row.sender_id,
     senderUsername: row.sender_username,
     recipientId: row.recipient_id,

@@ -23,3 +23,15 @@ export async function me(req, res, next) {
     next(err);
   }
 }
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    await authService.changePassword(req.user.userId, currentPassword, newPassword);
+
+    res.status(200).json({ message: 'Password changed successfully' });
+  } catch (err) {
+    next(err);
+  }
+}

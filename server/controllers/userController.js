@@ -81,3 +81,13 @@ export function remove(req, res, next) {
     next(err);
   }
 }
+
+export async function resetPassword(req, res, next) {
+  try {
+    const result = await userService.resetUserPassword(req.user.userId, req.params.id);
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}

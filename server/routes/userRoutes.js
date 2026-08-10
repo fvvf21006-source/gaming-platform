@@ -49,6 +49,19 @@ router.patch(
   userController.updateStatus
 );
 
+// Hierarchy-based admin password reset (P08 Part 4) — same "everyone
+// but Player" role gate as user creation and status changes; the
+// ancestor-only, hierarchy-scoped check is data-dependent and lives
+// in userService, same pattern as the rest of this file.
+router.post(
+  '/:id/reset-password',
+  authenticate,
+  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  idParamValidationRules,
+  handleValidationErrors,
+  userController.resetPassword
+);
+
 // Deletion is explicitly out of scope for this milestone.
 router.delete('/:id', authenticate, idParamValidationRules, handleValidationErrors, userController.remove);
 

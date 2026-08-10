@@ -2,10 +2,13 @@
 // No SQL (that's the repository's job), no req/res objects (that's
 // the controller's job).
 
-import { findUserByUsername, findUserById } from '../repositories/authRepository.js';
-import { comparePassword } from '../utils/password.js';
+import { findUserByUsername, findUserById, findPasswordHashById, updatePassword } from '../repositories/authRepository.js';
+import { comparePassword, hashPassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { createLogEntry } from '../repositories/auditRepository.js';
+import { logAction } from './auditService.js';
+import { createNotification } from './notificationService.js';
+import { badRequest } from '../utils/httpErrors.js';
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid username or password';
 
@@ -34,6 +37,7 @@ function toPublicUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
+    mustChangePassword: user.must_change_password,
   };
 }
 
@@ -109,4 +113,50 @@ export async function getCurrentUser(userId) {
   }
 
   return toPublicUser(user);
+}
+
+/**
+ * Changes the caller's own password (P08 Part 3). Verifies the
+ * current password, enforces the same minimum-length policy as
+ * account creation (userValidator's createUserValidationRules),
+ * hashes the new password, and always clears must_change_password —
+ * this is the self-service counterpart to an administrative reset
+ * (Part 4), which always sets that flag.
+ * @param {string} userId
+ * @param {string} currentPassword
+ * @param {string} newPassword
+ */
+export async function changePassword(userId, currentPassword, newPassword) {
+  const currentHash = await findPasswordHashById(userId);
+
+  if (!currentHash) {
+    throw notFound('User not found');
+  }
+
+  const currentMatches = await comparePassword(currentPassword, currentHash);
+
+  if (!currentMatches) {
+    throw unauthorized('Current password is incorrect');
+  }
+
+  if (currentPassword === newPassword) {
+    throw badRequest('New password must be different from the current password');
+  }
+
+  const newHash = await hashPassword(newPassword);
+
+  await updatePassword(userId, { passwordHash: newHash, mustChangePassword: false });
+
+  await createNotification({
+    userId,
+    type: 'password_changed',
+    message: 'Your password has been changed.',
+  });
+
+  await logAction({
+    actorId: userId,
+    action: 'password_changed',
+    entityType: 'user',
+    entityId: userId,
+  });
 }

@@ -38,3 +38,22 @@ export async function transactions(req, res, next) {
     next(err);
   }
 }
+
+export async function adjustBalance(req, res, next) {
+  try {
+    const { userId, operation, amount, reason } = req.body;
+
+    const result = await walletService.adjustBalance({
+      adminId: req.user.userId,
+      adminRole: req.user.role,
+      targetUserId: userId,
+      operation,
+      amount,
+      reason,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
