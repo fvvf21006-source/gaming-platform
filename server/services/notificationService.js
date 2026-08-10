@@ -4,17 +4,15 @@
 import * as notificationRepository from '../repositories/notificationRepository.js';
 import { forbidden, notFound } from '../utils/httpErrors.js';
 
-// The five notification types this milestone supports (BR-28).
-// password_changed has no trigger yet — there is no password-change
-// endpoint anywhere in the API (FR-2.3 is unimplemented) — but the
-// type is defined now so createNotification is ready the moment
-// that endpoint exists.
+// The notification types this project supports (BR-28).
 export const NOTIFICATION_TYPES = [
   'account_created',
   'wallet_transfer',
   'password_changed',
+  'password_reset',
   'account_status_changed',
   'game_completed',
+  'points_adjusted',
 ];
 
 function toPublicNotification(row) {

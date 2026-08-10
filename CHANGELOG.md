@@ -1,5 +1,34 @@
 # Changelog
 
+## P08 - Administrative Features
+
+Date:
+YYYY-MM-DD
+
+Numbering note
+
+- This work was requested as "P08," but the prior version of `docs/06_PROJECT_STATUS.md` had already assigned "P08" to frontend implementation. Documentation now treats this backend work as the real P08 and shifts frontend to P09 (Testing/QA and Deployment move to P10/P11 accordingly).
+
+Completed
+
+- Super Admin transfers are now unlimited: `POST /api/wallet/transfer` skips the balance check entirely when the sender is Super Admin (who has no wallet, per FR-3.1). Every other role's transfer path — including the balance check itself — is byte-for-byte unchanged; verified with a direct transfer of 999,999 points from a Super Admin with zero balance history
+- New `POST /api/wallet/adjust` — administrative add/remove/set balance operations, required reason, Super Admin may adjust anyone, Level 1–3 only within their own hierarchy (self-or-descendant, broader than a transfer's direct-child-only rule)
+- New `PUT /api/auth/change-password` — self-service, verifies current password, same minimum-length policy as account creation, rejects new-password-equals-current, always clears `must_change_password`
+- New `POST /api/users/:id/reset-password` — hierarchy-based (ancestor-only, never self, Player excluded), generates a random temporary password server-side (never administrator-chosen), returned exactly once, sets `must_change_password`
+- New `users.must_change_password` column, surfaced as `mustChangePassword` in both the login response and `GET /api/auth/me` — login still succeeds regardless of its value; enforcing an actual redirect is left to the frontend, per this milestone's explicit scope
+- Three new audit actions (`password_changed`, `password_reset`, `points_adjusted`) via the existing `auditService.logAction()` helper — no new repository
+- Two new notification types (`password_reset`, `points_adjusted`); `password_changed` (defined but never triggered since P07) now fires for real
+- Two additive schema migrations, both backward-compatible with every existing row: `wallet_transactions.sender_balance_after` is now nullable (Super Admin and admin adjustments have no real sender balance to report), and a new `wallet_transactions.transaction_type` column replaces the hardcoded `'transfer'` literal the P07 reporting module was explicitly built to anticipate — `reportService.js`'s point-distribution mapping now reads the real column
+- No new repository files — every new capability reuses `walletRepository`, `authRepository`, `userRepository`, `auditService.logAction()`, and `notificationService.createNotification()`
+
+Testing note
+
+- Confirmed no regression to P05's ordinary transfer balance checks, P06's full game-session flow, and P07's reporting/audit/notification modules, all against a live PostgreSQL instance in the same test session as the new features
+
+Next
+
+- P09 — Frontend implementation
+
 ## P07 - Comprehensive Audit Logging (BR-25/BR-26 closed out)
 
 Date:

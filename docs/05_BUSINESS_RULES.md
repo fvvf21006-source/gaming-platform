@@ -24,6 +24,7 @@ This is the authoritative list of business rules for the platform. Every service
 - BR-15: Players consume points only by starting a game session; they cannot transfer points to any other account.
 - BR-16: Virtual points carry no real-world monetary value and cannot be purchased with, or exchanged for, real currency at any point in the system.
 - BR-31: A transfer's recipient must be an account the sender directly created (i.e. the sender is that account's immediate parent) — not merely any user at the tier below, and not a more distant descendant.
+- BR-39: Super Admin's transfers are exempt from BR-12/BR-13 — Super Admin has no wallet (FR-3.1) and no balance limit, and its "balance" never decreases because there is no balance to decrease. Every other role's transfers remain fully subject to BR-12/BR-13, unchanged.
 
 ## Account Status
 
@@ -54,7 +55,7 @@ This is the authoritative list of business rules for the platform. Every service
 
 - BR-28: Users are notified of account creation, point transfers, account status updates, and game completion events that concern them. Notification creation is best-effort — a failure to create a notification never blocks or fails the underlying action (account creation, a transfer, a completed session), the same defensive policy BR-35's login audit logging uses.
 - BR-36: A notification belongs to exactly one user and can only be marked read by that user — not by an ancestor, not by anyone else, regardless of hierarchy.
-- BR-37: Password-change notifications are not yet triggered by anything — there is no password-change action anywhere in the system yet (FR-2.3 is unimplemented). The notification type exists so it is ready the moment that action is built.
+- BR-37: Password-changed and password-reset notifications are triggered by `PUT /api/auth/change-password` and `POST /api/users/:id/reset-password` respectively (P08). A point-adjustment notification (`points_adjusted`) is triggered by `POST /api/wallet/adjust`, same best-effort policy as every other notification.
 
 ## Account Integrity
 
@@ -66,3 +67,15 @@ This is the authoritative list of business rules for the platform. Every service
 - BR-34: The point-distribution and player-activity reports are scoped to the requester's own hierarchy (self + all descendants) — the same visibility rule as BR-8, not the whole platform. Only the login report is platform-wide, and only for Super Admin.
 - BR-35: Every login attempt — successful or failed — creates an audit log entry (fulfills BR-26 for logins specifically). A failed attempt against a username that does not exist has no `actor_id` (there is no user to attribute it to); the attempted username is preserved separately so the attempt is still reviewable.
 - BR-38: Audit log review is Super Admin only and platform-wide — unlike the point-distribution and player-activity reports, there is no hierarchy-scoped view of audit logs for Level 1–3.
+
+## Administrative Point Management
+
+- BR-40: Super Admin may administratively adjust (add, remove, or set) any user's balance except its own Super Admin peers (Super Admin has no wallet). A Level 1–3 admin may only adjust a user within their own hierarchy (self or any descendant, the same breadth as BR-8) — not merely a direct child, which is stricter (BR-31 applies only to peer-to-peer transfers, not administrative adjustments).
+- BR-41: Every administrative adjustment requires a non-empty reason, which is recorded in the resulting audit log entry.
+- BR-42: An administrative adjustment can never leave a balance negative, enforced the same way as an ordinary transfer (BR-12).
+
+## Password Management
+
+- BR-43: A user may change their own password at any time by providing their current password; the new password must be at least 8 characters and different from the current one.
+- BR-44: A password reset (as opposed to a self-service change) can only be performed by an ancestor of the target account, never by the account itself and never by a Player. The temporary password is always randomly generated server-side — an administrator can never choose it — and is returned to the caller exactly once; it is never stored or logged in plaintext.
+- BR-45: A password reset sets `must_change_password` on the target account; a successful self-service password change always clears it, regardless of its prior value. The flag does not itself block login or any other action — it is surfaced in the login response for the frontend to act on.

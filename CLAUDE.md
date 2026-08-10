@@ -97,7 +97,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 
 ## Current Phase
 
-**P08 — Frontend Implementation** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking).
+**P09 — Frontend Implementation** (not yet started; see [`docs/06_PROJECT_STATUS.md`](docs/06_PROJECT_STATUS.md) for full milestone tracking and a note on why this shifted from P08 to P09).
 
 ## Completed Phases
 
@@ -110,12 +110,18 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - **P06** — Game Management (`GET /api/games`, `POST /api/games/:id/play`, `POST /api/games/sessions/:sessionId/complete`, `GET /api/games/history`; atomic wallet-debit-plus-session-creation, frozen-player check re-fetched fresh (BR-32), completion restricted to the session's own owner and only while `in_progress` (BR-33); new seed files for a minimal game catalog).
 - **P07** — Reporting, Notifications & Audit Log Review, complete:
   - Reporting: `GET /api/reports/point-distribution`, `GET /api/reports/player-activity` (hierarchy-scoped), `GET /api/reports/login` (platform-wide, Super-Admin-only). JSON/CSV output. Login audit logging wired up first via `auditRepository.js`, then extended to cover user creation/updates/status changes, wallet transfers, and game sessions via a shared `auditService.logAction()` helper and one-line additive calls into `userService`, `walletService`, `gameService`.
-  - Notifications: `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all`. Four of five notification types auto-trigger via minimal hooks added to `userService`, `walletService`, `gameService` — all best-effort/non-blocking, same policy as login audit logging.
+  - Notifications: `GET /api/notifications`, `PATCH /api/notifications/:id/read`, `PATCH /api/notifications/read-all`. Best-effort/non-blocking, same policy as login audit logging.
   - Audit Log Review: `GET /api/audit`, `GET /api/audit/:id`, Super-Admin-only, filterable, read-only by design (BR-27).
+- **P08** — Administrative Features, complete:
+  - Super Admin unlimited transfers — `POST /api/wallet/transfer` skips the balance check entirely for Super Admin (no wallet, no limit); every other role's balance check is unchanged.
+  - `POST /api/wallet/adjust` — administrative add/remove/set, required reason, Super Admin adjusts anyone, Level 1–3 only within their own hierarchy.
+  - `PUT /api/auth/change-password` and `POST /api/users/:id/reset-password` (hierarchy-based, ancestor-only, server-generated temporary password, never administrator-chosen).
+  - New `users.must_change_password` column, surfaced in login/`/me` responses; not enforced server-side by design (frontend concern).
+  - Two additive schema migrations (`012`, `013`) — nullable `sender_balance_after`, new `transaction_type` column (replacing a hardcoded literal the P07 report was explicitly built to anticipate), and the `must_change_password` column itself. Zero impact on existing rows.
 
 ## Next Phase
 
-**P08 — Frontend implementation.** Build the React frontend against the now-complete backend API (P00–P07). No backend endpoints are expected to change as part of this phase unless the frontend surfaces a genuine gap.
+**P09 — Frontend implementation.** Build the React frontend against the now-complete backend API (P00–P08). No backend endpoints are expected to change as part of this phase unless the frontend surfaces a genuine gap.
 
 ## Important Constraints
 
@@ -128,7 +134,7 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - Never put SQL in a controller or service — SQL belongs only in repositories.
 - Never put business logic in a controller — controllers only translate HTTP ↔ service calls.
 - Never allow a level to create, view, or modify an account that is not its direct child.
-- Never allow a point transfer that would push a balance negative.
+- Never allow a point transfer that would push a balance negative — except Super Admin, which has no wallet and no balance to push negative (P08); every other role's balance check is absolute.
 - Never allow an action to bypass an audit log entry.
 - Never hardcode secrets, connection strings, or credentials.
 - Never introduce real-money payment processing, cash-out, or currency-exchange functionality.

@@ -48,9 +48,10 @@ Every table uses a UUID surrogate primary key (`id`), generated with `gen_random
 - `roles.hierarchy_level` must be between 0 and 4.
 - `users.status` must be `active` or `frozen`; `created_by` cannot equal a user's own `id`.
 - `wallets.balance` must never be negative (BR-12).
-- `wallet_transactions.amount` must be positive; both post-transfer balances must be non-negative; `sender_id` cannot equal `recipient_id`.
+- `wallet_transactions.amount` must be positive; both post-transfer balances must be non-negative where present (`sender_balance_after` is nullable as of P08 — `NULL` for Super Admin's unlimited transfers and administrative adjustments, which have no real sender-side wallet); `sender_id` cannot equal `recipient_id`; `transaction_type` (added P08) must be one of `transfer`, `admin_add`, `admin_remove`, `admin_set`.
 - `games.point_cost` must be non-negative.
 - `game_sessions.points_spent` must be non-negative; `status` must be `in_progress`, `completed`, or `abandoned`; `completed_at` cannot precede `started_at`.
+- `users.must_change_password` (added P08) is a plain boolean, no CHECK — defaults to `false` for every existing and new row.
 
 ## Indexes
 
@@ -74,7 +75,7 @@ Every table uses a UUID surrogate primary key (`id`), generated with `gen_random
 ## Migration Strategy
 
 - Every schema change is a new, additive migration file — existing, already-applied migrations are never edited.
-- Migrations are numbered and applied in strict order (`000_enable_extensions.sql` through `011_create_system_settings.sql` as of P02/P03).
+- Migrations are numbered and applied in strict order (`000_enable_extensions.sql` through `013_alter_users_must_change_password.sql` as of P08). `012` and `013` are the first two `ALTER TABLE` migrations in the project — both additive and backward-compatible (a new nullable/defaulted column, never a change to an existing row's meaning).
 - Applied via plain `psql -f` in sequence (`for f in server/database/migrations/*.sql; do psql ... -f "$f"; done`) — no separate migration-runner tool is in use.
 - `schema.sql` reflects the cumulative result of all applied migrations, for reference and fresh local setup; regenerate it after adding a new migration.
 

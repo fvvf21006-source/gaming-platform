@@ -3,7 +3,8 @@
 // the controller's job).
 
 import * as userRepository from '../repositories/userRepository.js';
-import { hashPassword } from '../utils/password.js';
+import { hashPassword, generateTemporaryPassword } from '../utils/password.js';
+import { updatePassword } from '../repositories/authRepository.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
@@ -288,4 +289,59 @@ export async function updateUserStatus(requesterId, targetId, status) {
   });
 
   return toPublicUser(updated);
+}
+
+/**
+ * Resets a user's password to a freshly generated, random temporary
+ * password (P08 Part 4). Hierarchy-based, ancestor-only — a user can
+ * never reset their own password this way (use PUT
+ * /api/auth/change-password for that); an admin may only reset a
+ * password for someone in their own descendant hierarchy (BR-8),
+ * broader than transferPoints' direct-child-only rule, same as
+ * adjustBalance. The route layer already excludes Player (BR:
+ * "Players cannot reset other users").
+ *
+ * The administrator never chooses the temporary password — it is
+ * always generated here and returned exactly once; the caller
+ * (controller) must not log or persist the plaintext anywhere.
+ * @param {string} requesterId
+ * @param {string} targetId
+ */
+export async function resetUserPassword(requesterId, targetId) {
+  const target = await userRepository.findUserById(targetId);
+
+  if (!target) {
+    throw notFound('User not found');
+  }
+
+  if (requesterId === targetId) {
+    throw forbidden('Use change-password to reset your own password');
+  }
+
+  const isAncestor = await userRepository.isSelfOrDescendant(requesterId, targetId);
+
+  if (!isAncestor) {
+    throw forbidden('User is outside your hierarchy');
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  await updatePassword(targetId, { passwordHash, mustChangePassword: true });
+
+  await createNotification({
+    userId: targetId,
+    type: 'password_reset',
+    message: 'Your password has been reset by an administrator. You will be asked to set a new password at your next login.',
+  });
+
+  await logAction({
+    actorId: requesterId,
+    action: 'password_reset',
+    entityType: 'user',
+    entityId: targetId,
+    metadata: { targetUsername: target.username },
+  });
+
+  return { temporaryPassword };
 }

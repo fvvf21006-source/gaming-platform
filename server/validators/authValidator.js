@@ -13,6 +13,18 @@ export const loginValidationRules = [
     .withMessage('password is required'),
 ];
 
+// Same minimum-length policy as account creation (userValidator's
+// createUserValidationRules) — no separate password policy invented
+// for this endpoint.
+export const changePasswordValidationRules = [
+  body('currentPassword').notEmpty().withMessage('currentPassword is required'),
+  body('newPassword')
+    .notEmpty()
+    .withMessage('newPassword is required')
+    .isLength({ min: 8 })
+    .withMessage('newPassword must be at least 8 characters'),
+];
+
 export function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
 

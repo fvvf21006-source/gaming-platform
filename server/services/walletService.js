@@ -26,6 +26,7 @@ function toPublicTransaction(row) {
     amount: row.amount,
     senderBalanceAfter: row.sender_balance_after,
     recipientBalanceAfter: row.recipient_balance_after,
+    transactionType: row.transaction_type,
     createdAt: row.created_at,
   };
 }
@@ -94,16 +95,30 @@ export async function transferPoints({ senderId, recipientId, amount }) {
 
   let transaction;
 
-  try {
-    transaction = await walletRepository.transferPoints({ senderId, recipientId, amount });
-  } catch (err) {
-    if (err.code === 'INSUFFICIENT_BALANCE') {
-      throw conflict('Insufficient balance');
+  // Super Admin has no wallet and no balance limit (FR-3.1, P08
+  // Part 1) — everyone else goes through the exact same
+  // balance-checked path as before this change, unmodified.
+  if (sender.role === 'super_admin') {
+    try {
+      transaction = await walletRepository.transferFromUnlimitedSender({ senderId, recipientId, amount });
+    } catch (err) {
+      if (err.code === 'RECIPIENT_WALLET_NOT_FOUND') {
+        throw notFound('Recipient wallet not found');
+      }
+      throw err;
     }
-    if (err.code === 'RECIPIENT_WALLET_NOT_FOUND') {
-      throw notFound('Recipient wallet not found');
+  } else {
+    try {
+      transaction = await walletRepository.transferPoints({ senderId, recipientId, amount });
+    } catch (err) {
+      if (err.code === 'INSUFFICIENT_BALANCE') {
+        throw conflict('Insufficient balance');
+      }
+      if (err.code === 'RECIPIENT_WALLET_NOT_FOUND') {
+        throw notFound('Recipient wallet not found');
+      }
+      throw err;
     }
-    throw err;
   }
 
   await createNotification({
@@ -139,4 +154,70 @@ export async function getTransactionHistory(userId) {
   const items = rows.map(toPublicTransaction);
 
   return { items, total: items.length };
+}
+
+const OPERATION_VERBS = { add: 'added to', remove: 'removed from', set: 'set on' };
+
+/**
+ * Administratively adds, removes, or sets a user's balance (P08
+ * Part 2). Super Admin may adjust anyone; a hierarchy admin
+ * (Level 1–3) may only adjust someone in their own hierarchy — the
+ * same self-or-descendant visibility rule BR-8 already uses
+ * elsewhere (broader than transferPoints' direct-child-only rule,
+ * since this is an administrative action, not a peer-to-peer
+ * transfer).
+ * @param {{adminId: string, adminRole: string, targetUserId: string, operation: 'add'|'remove'|'set', amount: number, reason: string}} input
+ */
+export async function adjustBalance({ adminId, adminRole, targetUserId, operation, amount, reason }) {
+  const target = await userRepository.findUserById(targetUserId);
+
+  if (!target) {
+    throw notFound('User not found');
+  }
+
+  if (target.role === 'super_admin') {
+    throw forbidden('Super Admin has no wallet to adjust');
+  }
+
+  if (adminRole !== 'super_admin') {
+    const inHierarchy = await userRepository.isSelfOrDescendant(adminId, targetUserId);
+
+    if (!inHierarchy) {
+      throw forbidden('User is outside your hierarchy');
+    }
+  }
+
+  let result;
+
+  try {
+    result = await walletRepository.adjustBalance({ adminId, targetUserId, operation, amount });
+  } catch (err) {
+    if (err.code === 'INSUFFICIENT_BALANCE') {
+      throw conflict('This adjustment would make the balance negative');
+    }
+    if (err.code === 'WALLET_NOT_FOUND') {
+      throw notFound('User has no wallet');
+    }
+    throw err;
+  }
+
+  await createNotification({
+    userId: targetUserId,
+    type: 'points_adjusted',
+    message: `${amount} points were ${OPERATION_VERBS[operation]} your balance. Reason: ${reason}`,
+  });
+
+  await logAction({
+    actorId: adminId,
+    action: 'points_adjusted',
+    entityType: 'wallet_transaction',
+    entityId: result.transaction?.id ?? targetUserId,
+    metadata: { targetUserId, operation, amount, reason, oldBalance: result.oldBalance, newBalance: result.newBalance },
+  });
+
+  return {
+    transaction: result.transaction ? toPublicTransaction(result.transaction) : null,
+    oldBalance: result.oldBalance,
+    newBalance: result.newBalance,
+  };
 }
