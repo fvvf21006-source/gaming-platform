@@ -16,7 +16,7 @@ No credit card is needed for any of them. Points are virtual, so there is nothin
 
 ## Step 0 — Put the code on GitHub
 
-Render deploys from your GitHub repo (`fvvf21006-source/gaming-platform`).
+Render deploys from your GitHub repo (`fvvf21006-source/luckey_cas`, branch `main`).
 
 1. Commit everything on your working branch and push it.
 2. Render builds the repo's **default branch** unless told otherwise. Either merge your branch into that branch (usually `main`), or choose your branch when creating the Blueprint in Step 3.
@@ -46,7 +46,7 @@ They are only used once, to create the account if none exists.
 ## Step 3 — Deploy on Render
 
 1. Sign up at <https://render.com> with GitHub.
-2. **New → Blueprint** → select the `gaming-platform` repo (and branch, if not the default).
+2. **New → Blueprint** → select the `luckey_cas` repo (branch `main`). Sign in to Render with the GitHub account `fvvf21006-source`, because the repo is private.
 3. Render reads `render.yaml` and lists two services: `gaming-platform-api` and `gaming-platform-client`.
 4. Fill the prompted values:
    - `DATABASE_URL` → the Neon string from Step 1
