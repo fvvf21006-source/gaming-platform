@@ -247,6 +247,13 @@ export async function updateUser(id, fields) {
     }
 
     if (profileSets.length > 0) {
+      // Accounts created outside createUser (e.g. the bootstrapped Super Admin) have no
+      // profile row yet; without this the UPDATE below would silently change nothing.
+      await client.query(
+        'INSERT INTO user_profiles (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+        [id]
+      );
+
       profileSets.push('updated_at = now()');
       profileValues.push(id);
       await client.query(

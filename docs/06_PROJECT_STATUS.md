@@ -1,12 +1,12 @@
 # 06 — Project Status
 
-_Last updated: P08 complete (Administrative Features)._
+_Last updated: P09 frontend rebuild (client code complete, live E2E verification pending — see below)._
 
 **Numbering note:** this milestone's own task brief called itself "P08 of the backend," but the previous version of this document had already assigned "P08" to frontend implementation. Since the actual work delivered here is backend (Super Admin unlimited transfers, administrative point management, password change/reset, forced password change), this document now treats that as P08 and shifts frontend implementation to P09, with Testing/QA and Deployment moving to P10/P11 accordingly. Nothing about the backend itself changed because of this — it's a documentation-numbering correction only.
 
 ## Current Phase
 
-**P09 — Frontend implementation** (not yet started).
+**P09 — Frontend implementation** (client code rewritten against the real API contract; live end-to-end verification against a running backend is still pending — see Known Risks).
 
 ## Completed
 
@@ -29,28 +29,38 @@ _Last updated: P08 complete (Administrative Features)._
 
 ## In Progress
 
-None — P08 is complete. P09 has not started.
+**P09 — Frontend implementation, client code complete pending live verification:**
+
+- The `client/` app previously contained leftover output from an unrelated prototype session ("Online Casino Night") that invented its own incorrect data model: a 3-tier role system (`super_admin/master_admin/admin/player`) instead of the real 5-tier hierarchy, USD currency balances (`formatUSD`, a fabricated dual "actual"/"bonus" wallet), and gambling mechanics (`wager`, `win`/`loss`, `payout`) with no backend support — all of which contradicted `CLAUDE.md`'s "no real money, no betting/wagering" rule. That model has been fully removed (`data/mockData.ts`, `utils/money.ts`, the unused `services/api.js`, and the local-state-only `context/AppContext.tsx` are all deleted).
+- The frontend is now rebuilt around the real 5-tier `Role` type (`super_admin/level_1/level_2/level_3/player`, `src/types/auth.ts`) and a single points balance (no currency formatting), matching `docs/04_API_SPEC.md` and `docs/05_BUSINESS_RULES.md` throughout — hierarchy-restricted user creation (`CHILD_ROLE` map), direct-child-only transfers vs. hierarchy-wide admin adjustments, Super Admin's no-wallet/unlimited-transfer exemption, forced password-change gating on `mustChangePassword`, Super-Admin-only audit log and login report, etc.
+- Data layer matches `docs/02_ARCHITECTURE.md`: `client/src/api/client.ts` now runs on Axios (was raw `fetch`, and its dead mock-login fallback is removed) and every screen is wired through TanStack Query hooks (`src/hooks/`) instead of fake local state; forms use React Hook Form + Zod (`src/schemas/`).
+- The Player game flow no longer fabricates a client-side win/loss/payout outcome (the real API has no such concept — a session just deducts a fixed `pointCost` and later records an arbitrary integer `score`). It now plays a small real mini-game (`src/components/game/ReflexGame.tsx`) whose score is submitted to `POST /api/games/sessions/:id/complete`. The "Lucky Crown Casino" visual branding and flavor copy were intentionally kept per explicit product direction — only the underlying mechanics changed.
+- The unrouted `Messaging.tsx` component was removed — there is no messaging/chat module anywhere in `01_REQUIREMENTS.md` or the API spec, and it had no persistence.
+- Fixed a pre-existing responsive bug (NFR-3): the login screen's two-column layout and the sidebar's `.hidden-mobile` class had no actual mobile breakpoint and overflowed below ~820px; both are now fixed via CSS media queries in `index.css`.
+- `npx tsc --noEmit` and `npm run build` both pass clean in `client/`.
+- **Not yet done this session:** a live end-to-end walkthrough against a running `server/` + PostgreSQL instance. No local Postgres was available and Docker Desktop could not be brought up headlessly in this environment; the user opted to skip live testing for now rather than provision one. `client/.env` / `client/.env.example` are prepared (`VITE_API_BASE_URL`, corrected from the previous `.env.example`'s stale `VITE_API_URL`), and `.claude/launch.json` is set up to preview the Vite dev server, so this is ready to verify as soon as a backend is reachable.
 
 ## Upcoming Milestones
 
 | Milestone | Deliverable |
 |---|---|
-| P09 | Frontend implementation against the completed API |
+| P09 | Live end-to-end verification of the rebuilt frontend against a running backend + PostgreSQL |
 | P10 | Testing and quality assurance |
 | P11 | Deployment and user acceptance |
 
 ## Future Phases
 
-See table above — P09 onward remain unstarted as of this writing.
+See table above.
 
 ## Known Risks
 
 - Scope/timeline risk if requirements change beyond what is documented in `01_REQUIREMENTS.md`.
 - FR-1.5 (login history/lockout) remains unimplemented.
 - The game catalog has no admin-management endpoint (only seed data).
-- `must_change_password` is surfaced by the backend but not enforced — nothing currently blocks an API call just because the flag is true. This is intentional per this milestone's brief ("frontend will later redirect user"), but it means the flag is advisory only until the frontend (P09) acts on it.
+- `must_change_password` is now enforced client-side (P09) — a forced change-password screen blocks all other routes until resolved — but this has not been exercised against a live backend yet.
+- The frontend's P09 rebuild has not been verified end-to-end against a running backend (see above) — it is confirmed to typecheck, build, and render correctly with no backend reachable (graceful network-error handling), but authenticated flows (login success, hierarchy CRUD, transfers, game sessions, reports) are unverified live.
 - As an academic project with a fixed timeline, thorough testing is at risk of being compressed if earlier milestones run long.
 
 ## Current Version
 
-`v0.9.0-in-progress` — backend complete through P08 (scaffolding, database, authentication, user management, wallet management, game management, reporting, notifications, audit log review, and administrative features); frontend implementation (P09) not yet started.
+`v0.9.0-in-progress` — backend complete through P08; frontend (P09) rebuilt against the real API contract and business rules, typechecked and built successfully, pending live end-to-end verification against a running backend.

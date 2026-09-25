@@ -15,41 +15,22 @@ This file is the primary reference for every future development session on this 
 ## Architecture
 
 ```
-React (client)
+React Frontend (client)
      ↓
-REST API
-     ↓
-Express (routes)
-     ↓
-Service Layer   (business logic)
-     ↓
-Repository Layer (SQL access)
-     ↓
-PostgreSQL
+Standalone Mock Data & UI Components
 ```
-
-Full detail: [`docs/02_ARCHITECTURE.md`](docs/02_ARCHITECTURE.md).
 
 ## Folder Structure
 
 ```
 gaming-platform/
   client/
-  server/
-    config/
-    controllers/
-    middleware/
-    repositories/
-    routes/
-    database/
-      connection.js
-      schema.sql
-      migrations/
-      seeds/
-    services/
-    validators/
-    utils/
-    server.js
+    src/
+      api/        # API client & Mock fallback handlers
+      components/ # Dashboard, User Management, Wallet, Reports, Audit, Games
+      data/       # Mock data & types
+      App.tsx
+      main.tsx
   docs/
   README.md
   CLAUDE.md

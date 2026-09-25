@@ -1,0 +1,49 @@
+# Render Blueprint — API (Node web service) + client (static site). All on the free plan.
+# Deploy: Render dashboard → New → Blueprint → select this repo.
+# The database is NOT created here: Render's free Postgres expires after ~30 days, so use a
+# free Neon database instead (permanent free tier). Full walkthrough: docs/10_FREE_DEPLOYMENT.md
+# Values marked sync:false are prompted for on first deploy.
+
+services:
+  - type: web
+    name: gaming-platform-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm ci
+    # setup-db is idempotent: applies pending migrations, seeds once, and creates the
+    # Super Admin from SUPER_ADMIN_* only if none exists yet.
+    startCommand: npm run setup-db && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Neon connection string, e.g. postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: CLIENT_URL
+        sync: false # the client's public URL, e.g. https://gaming-platform-client.onrender.com (no trailing slash)
+      - key: SUPER_ADMIN_USERNAME
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false # first-deploy only; choose a strong password (8+ chars)
+
+  - type: web
+    name: gaming-platform-client
+    runtime: static
+    rootDir: client
+    buildCommand: npm ci --include=dev && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false # the API's public URL, e.g. https://gaming-platform-api.onrender.com (no trailing slash)
+    routes:
+      # SPA fallback so /users, /wallet etc. work on refresh / direct links
+      - type: rewrite
+        source: /*
+        destination: /index.html

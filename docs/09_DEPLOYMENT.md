@@ -42,3 +42,11 @@ Production values for all variables listed in `08_SETUP.md` must be set via the 
 - [ ] Database backups configured and verified.
 - [ ] Audit logging confirmed functional end-to-end in the production environment.
 - [ ] No development/seed data present in the production database.
+
+## Prototype deployment (free tier)
+
+The repo root contains a `render.yaml` Blueprint for the API and the static client, with a free Neon Postgres database (Render's own free Postgres expires after ~30 days). The full step-by-step walkthrough, including troubleshooting, is in [`10_FREE_DEPLOYMENT.md`](10_FREE_DEPLOYMENT.md).
+
+On each API start, `npm run setup-db` (`server/scripts/setup-database.js`) applies pending migrations and one-time seeds, and creates the Super Admin if missing. It is idempotent and tracks progress in `schema_migrations`. In production the API refuses to start if `DATABASE_URL`, `JWT_SECRET` or `CLIENT_URL` is missing.
+
+Known prototype limits: the free API instance sleeps when idle (first request is slow); login lockout (FR-1.5) is not implemented.

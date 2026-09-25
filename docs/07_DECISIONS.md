@@ -37,3 +37,15 @@ Tailwind's utility-first approach speeds up building a consistent, responsive UI
 ## Why Express
 
 Express is a minimal, well-understood Node.js framework that imposes little structure of its own, which pairs well with this project's explicit, self-imposed layered architecture (Controller → Service → Repository) rather than a more opinionated framework's conventions.
+
+## P09: Discarding the "Online Casino Night" prototype data model
+
+An earlier, unrelated prototype session had generated a `client/` scaffold using its own invented data model — a 3-tier role system, USD-formatted dual "actual"/"bonus" wallets, and simulated win/loss/payout gambling mechanics — none of which match `01_REQUIREMENTS.md`, `04_API_SPEC.md`, or the real 5-tier hierarchy the backend already implements through P08. That model directly contradicted `CLAUDE.md`'s explicit "no real money, no betting/wagering/odds" rule. It has been fully removed rather than patched, since it wasn't a variant of the correct model — it was answering a different (unapproved) product brief. The frontend was rebuilt from `docs/04_API_SPEC.md` and `docs/05_BUSINESS_RULES.md` directly, reusing the one part of the old scaffold that was already correct: `client/src/api/client.ts`'s typed request functions.
+
+## P09: Axios + TanStack Query + React Hook Form + Zod
+
+`docs/02_ARCHITECTURE.md` specifies this stack for the frontend; it was adopted as-is rather than hand-rolling fetch/state plumbing, since every screen needs consistent loading/error/caching behavior against a real backend and the project's own architecture doc already made this call.
+
+## P09: A real mini-game instead of simulated win/loss
+
+The backend has no win/loss/payout concept — `POST /api/games/:id/play` deducts a fixed `pointCost` and `POST /api/games/sessions/:id/complete` just records an arbitrary non-negative integer `score`. Rather than fabricate a client-side random outcome (which is exactly the kind of "odds-based outcome" `CLAUDE.md` prohibits, and which nothing on the server would back), `GameAccess.tsx` now launches a small genuinely-playable reaction-time mini-game (`components/game/ReflexGame.tsx`) whose real score is what gets submitted.
