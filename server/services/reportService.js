@@ -32,12 +32,13 @@ function summarizePointDistribution(items) {
 
 /**
  * Point distribution within the caller's own hierarchy (self +
- * descendants), optionally restricted to a date range.
- * @param {{requesterId: string, startDate?: string, endDate?: string}} input
+ * direct children; Super Admin sees everything), optionally restricted to a date range.
+ * @param {{requesterId: string, requesterRole: string, startDate?: string, endDate?: string}} input
  */
-export async function getPointDistributionReport({ requesterId, startDate, endDate }) {
+export async function getPointDistributionReport({ requesterId, requesterRole, startDate, endDate }) {
   const rows = await reportRepository.getPointDistributionTransactions({
     requesterId,
+    isGlobal: requesterRole === 'super_admin',
     startDate: startDate ?? null,
     endDate: endDate ?? null,
   });
@@ -76,12 +77,13 @@ function summarizePlayerActivity(items) {
 
 /**
  * Game session activity within the caller's own hierarchy (self +
- * descendants), optionally restricted to a date range.
- * @param {{requesterId: string, startDate?: string, endDate?: string}} input
+ * direct children; Super Admin sees everything), optionally restricted to a date range.
+ * @param {{requesterId: string, requesterRole: string, startDate?: string, endDate?: string}} input
  */
-export async function getPlayerActivityReport({ requesterId, startDate, endDate }) {
+export async function getPlayerActivityReport({ requesterId, requesterRole, startDate, endDate }) {
   const rows = await reportRepository.getPlayerActivitySessions({
     requesterId,
+    isGlobal: requesterRole === 'super_admin',
     startDate: startDate ?? null,
     endDate: endDate ?? null,
   });

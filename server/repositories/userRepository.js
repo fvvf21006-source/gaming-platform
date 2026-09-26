@@ -132,40 +132,30 @@ export async function findUserById(id) {
 }
 
 /**
- * Returns the requesting user's own row plus every user in their
- * descendant hierarchy (children, grandchildren, ...), found by
- * walking the created_by chain with a recursive query.
+ * Returns the requesting user's own row plus the users they
+ * directly created (their immediate child tier only — never
+ * grandchildren or deeper).
  * @param {string} requesterId
  */
-export async function findDescendantsAndSelf(requesterId) {
+export async function findChildrenAndSelf(requesterId) {
   const result = await pool.query(
-    `WITH RECURSIVE descendants AS (
-       SELECT id, role_id, created_by, username, email, status, created_at, updated_at
-       FROM users
-       WHERE id = $1
-
-       UNION ALL
-
-       SELECT u.id, u.role_id, u.created_by, u.username, u.email, u.status, u.created_at, u.updated_at
-       FROM users u
-       INNER JOIN descendants d ON u.created_by = d.id
-     )
-     SELECT
-       d.id,
-       d.created_by,
-       d.username,
-       d.email,
-       d.status,
-       d.created_at,
-       d.updated_at,
+    `SELECT
+       u.id,
+       u.created_by,
+       u.username,
+       u.email,
+       u.status,
+       u.created_at,
+       u.updated_at,
        r.name AS role,
        p.full_name,
        p.display_name,
        p.avatar_url
-     FROM descendants d
-     JOIN roles r ON r.id = d.role_id
-     LEFT JOIN user_profiles p ON p.user_id = d.id
-     ORDER BY d.created_at ASC`,
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN user_profiles p ON p.user_id = u.id
+     WHERE u.id = $1 OR u.created_by = $1
+     ORDER BY u.created_at ASC`,
     [requesterId]
   );
 
@@ -173,23 +163,43 @@ export async function findDescendantsAndSelf(requesterId) {
 }
 
 /**
- * True if targetId is the requester's own id, or anywhere in the
- * requester's descendant hierarchy (BR-8). Uses the same created_by
- * walk as findDescendantsAndSelf, without fetching full rows.
+ * Returns every user on the platform. Only for Super Admin's global
+ * access — callers must have checked the role first.
+ */
+export async function findAllUsers() {
+  const result = await pool.query(
+    `SELECT
+       u.id,
+       u.created_by,
+       u.username,
+       u.email,
+       u.status,
+       u.created_at,
+       u.updated_at,
+       r.name AS role,
+       p.full_name,
+       p.display_name,
+       p.avatar_url
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN user_profiles p ON p.user_id = u.id
+     ORDER BY u.created_at ASC`
+  );
+
+  return result.rows;
+}
+
+/**
+ * True if targetId is the requester's own id or a user the
+ * requester directly created (immediate child tier only).
  * @param {string} requesterId
  * @param {string} targetId
  */
-export async function isSelfOrDescendant(requesterId, targetId) {
+export async function isSelfOrDirectChild(requesterId, targetId) {
   const result = await pool.query(
-    `WITH RECURSIVE descendants AS (
-       SELECT id FROM users WHERE id = $1
-
-       UNION ALL
-
-       SELECT u.id FROM users u
-       INNER JOIN descendants d ON u.created_by = d.id
-     )
-     SELECT EXISTS (SELECT 1 FROM descendants WHERE id = $2) AS is_visible`,
+    `SELECT EXISTS (
+       SELECT 1 FROM users WHERE id = $2 AND (id = $1 OR created_by = $1)
+     ) AS is_visible`,
     [requesterId, targetId]
   );
 

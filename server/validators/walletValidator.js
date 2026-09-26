@@ -2,7 +2,7 @@
 // business logic (e.g. this never checks balances or hierarchy;
 // that's walletService's job).
 
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 
 export const transferValidationRules = [
   body('recipientId')
@@ -15,6 +15,10 @@ export const transferValidationRules = [
     .withMessage('amount is required')
     .isInt({ gt: 0 })
     .withMessage('amount must be a positive integer'),
+];
+
+export const transactionsQueryValidationRules = [
+  query('userId').optional().isUUID().withMessage('userId must be a valid UUID'),
 ];
 
 const ADJUSTMENT_OPERATIONS = ['add', 'remove', 'set'];

@@ -22,6 +22,7 @@ export async function pointDistribution(req, res, next) {
 
     const report = await reportService.getPointDistributionReport({
       requesterId: req.user.userId,
+      requesterRole: req.user.role,
       startDate,
       endDate,
     });
@@ -38,6 +39,7 @@ export async function playerActivity(req, res, next) {
 
     const report = await reportService.getPlayerActivityReport({
       requesterId: req.user.userId,
+      requesterRole: req.user.role,
       startDate,
       endDate,
     });

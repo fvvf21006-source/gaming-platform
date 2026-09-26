@@ -24,8 +24,11 @@ function toPublicTransaction(row) {
     senderId: row.sender_id,
     recipientId: row.recipient_id,
     amount: row.amount,
+    senderBalanceBefore: row.sender_balance_before,
     senderBalanceAfter: row.sender_balance_after,
+    recipientBalanceBefore: row.recipient_balance_before,
     recipientBalanceAfter: row.recipient_balance_after,
+    performedBy: row.performed_by,
     transactionType: row.transaction_type,
     createdAt: row.created_at,
   };
@@ -145,11 +148,23 @@ export async function transferPoints({ senderId, recipientId, amount }) {
 }
 
 /**
- * Returns the caller's transaction history (sent or received),
- * newest first.
- * @param {string} userId
+ * Returns a transaction history (sent or received), newest first.
+ * Defaults to the caller's own; a caller may also view the history
+ * of a user they directly created, and Super Admin may view anyone's.
+ * Nobody else's history is reachable.
+ * @param {{requesterId: string, requesterRole: string, targetUserId?: string}} input
  */
-export async function getTransactionHistory(userId) {
+export async function getTransactionHistory({ requesterId, requesterRole, targetUserId }) {
+  const userId = targetUserId ?? requesterId;
+
+  if (userId !== requesterId && requesterRole !== 'super_admin') {
+    const allowed = await userRepository.isSelfOrDirectChild(requesterId, userId);
+
+    if (!allowed) {
+      throw forbidden('User is outside your hierarchy');
+    }
+  }
+
   const rows = await walletRepository.getTransactions(userId);
   const items = rows.map(toPublicTransaction);
 
@@ -161,11 +176,9 @@ const OPERATION_VERBS = { add: 'added to', remove: 'removed from', set: 'set on'
 /**
  * Administratively adds, removes, or sets a user's balance (P08
  * Part 2). Super Admin may adjust anyone; a hierarchy admin
- * (Level 1–3) may only adjust someone in their own hierarchy — the
- * same self-or-descendant visibility rule BR-8 already uses
- * elsewhere (broader than transferPoints' direct-child-only rule,
- * since this is an administrative action, not a peer-to-peer
- * transfer).
+ * (Level 1–3) may only adjust a user they directly created — the
+ * same direct-child rule transferPoints uses. Nobody adjusts their
+ * own balance.
  * @param {{adminId: string, adminRole: string, targetUserId: string, operation: 'add'|'remove'|'set', amount: number, reason: string}} input
  */
 export async function adjustBalance({ adminId, adminRole, targetUserId, operation, amount, reason }) {
@@ -180,9 +193,7 @@ export async function adjustBalance({ adminId, adminRole, targetUserId, operatio
   }
 
   if (adminRole !== 'super_admin') {
-    const inHierarchy = await userRepository.isSelfOrDescendant(adminId, targetUserId);
-
-    if (!inHierarchy) {
+    if (target.created_by !== adminId) {
       throw forbidden('User is outside your hierarchy');
     }
   }

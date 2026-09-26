@@ -49,3 +49,7 @@ An earlier, unrelated prototype session had generated a `client/` scaffold using
 ## P09: A real mini-game instead of simulated win/loss
 
 The backend has no win/loss/payout concept — `POST /api/games/:id/play` deducts a fixed `pointCost` and `POST /api/games/sessions/:id/complete` just records an arbitrary non-negative integer `score`. Rather than fabricate a client-side random outcome (which is exactly the kind of "odds-based outcome" `CLAUDE.md` prohibits, and which nothing on the server would back), `GameAccess.tsx` now launches a small genuinely-playable reaction-time mini-game (`components/game/ReflexGame.tsx`) whose real score is what gets submitted.
+
+## Strict immediate-child scope and an immutable ledger
+
+Visibility, reports, admin actions, and transaction-history access were narrowed from "all descendants" to "self + direct children" (Super Admin remains global), per the access-control requirements: no level reaches past its immediate child tier. `wallet_transactions` now also records `sender_balance_before`, `recipient_balance_before`, and `performed_by` (migration 014), and a database trigger rejects any UPDATE/DELETE on it, so transaction history can never be deleted in a way that reverses or duplicates points — balances live only in `wallets` and change solely through transfer/adjust. `GET /api/wallet/transactions?userId=` lets a parent view a direct child's history.

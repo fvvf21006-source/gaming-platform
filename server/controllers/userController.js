@@ -28,7 +28,7 @@ export async function create(req, res, next) {
 
 export async function list(req, res, next) {
   try {
-    const result = await userService.getVisibleUsers(req.user.userId);
+    const result = await userService.getVisibleUsers(req.user.userId, req.user.role);
 
     res.status(200).json(result);
   } catch (err) {
@@ -38,7 +38,7 @@ export async function list(req, res, next) {
 
 export async function getById(req, res, next) {
   try {
-    const user = await userService.getUserById(req.user.userId, req.params.id);
+    const user = await userService.getUserById(req.user.userId, req.user.role, req.params.id);
 
     res.status(200).json({ user });
   } catch (err) {
@@ -50,7 +50,7 @@ export async function update(req, res, next) {
   try {
     const { email, status, fullName, displayName, avatarUrl } = req.body;
 
-    const user = await userService.updateUser(req.user.userId, req.params.id, {
+    const user = await userService.updateUser(req.user.userId, req.user.role, req.params.id, {
       email,
       status,
       fullName,
@@ -66,7 +66,7 @@ export async function update(req, res, next) {
 
 export async function updateStatus(req, res, next) {
   try {
-    const user = await userService.updateUserStatus(req.user.userId, req.params.id, req.body.status);
+    const user = await userService.updateUserStatus(req.user.userId, req.user.role, req.params.id, req.body.status);
 
     res.status(200).json({ user });
   } catch (err) {
@@ -84,7 +84,7 @@ export function remove(req, res, next) {
 
 export async function resetPassword(req, res, next) {
   try {
-    const result = await userService.resetUserPassword(req.user.userId, req.params.id);
+    const result = await userService.resetUserPassword(req.user.userId, req.user.role, req.params.id);
 
     res.status(200).json(result);
   } catch (err) {

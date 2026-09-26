@@ -11,7 +11,7 @@ This is the authoritative list of business rules for the platform. Every service
 - BR-5: Level 3 creates Player accounts only.
 - BR-6: Players cannot create accounts of any kind.
 - BR-7: There is no public self-registration for any role.
-- BR-8: A user may only view, manage, or act upon accounts within their own descendant hierarchy.
+- BR-8: Super Admin has global access. Every other role may only view, manage, or act upon its own account and the accounts it directly created (its immediate child tier) — never grandchildren or deeper levels, and never another user's children.
 - BR-9: Nothing bypasses the hierarchy — no level may skip a tier or act on a non-descendant account.
 
 ## Wallet & Point Transfers
@@ -64,13 +64,13 @@ This is the authoritative list of business rules for the platform. Every service
 
 ## Reporting
 
-- BR-34: The point-distribution and player-activity reports are scoped to the requester's own hierarchy (self + all descendants) — the same visibility rule as BR-8, not the whole platform. Only the login report is platform-wide, and only for Super Admin.
+- BR-34: The point-distribution and player-activity reports are scoped to the requester's own hierarchy (self + direct children) — the same visibility rule as BR-8; Super Admin sees the whole platform. Only the login report is platform-wide, and only for Super Admin.
 - BR-35: Every login attempt — successful or failed — creates an audit log entry (fulfills BR-26 for logins specifically). A failed attempt against a username that does not exist has no `actor_id` (there is no user to attribute it to); the attempted username is preserved separately so the attempt is still reviewable.
 - BR-38: Audit log review is Super Admin only and platform-wide — unlike the point-distribution and player-activity reports, there is no hierarchy-scoped view of audit logs for Level 1–3.
 
 ## Administrative Point Management
 
-- BR-40: Super Admin may administratively adjust (add, remove, or set) any user's balance except its own Super Admin peers (Super Admin has no wallet). A Level 1–3 admin may only adjust a user within their own hierarchy (self or any descendant, the same breadth as BR-8) — not merely a direct child, which is stricter (BR-31 applies only to peer-to-peer transfers, not administrative adjustments).
+- BR-40: Super Admin may administratively adjust (add, remove, or set) any user's balance except its own Super Admin peers (Super Admin has no wallet). A Level 1–3 admin may only adjust a user they directly created — never themselves, never deeper descendants (same direct-child rule as transfers).
 - BR-41: Every administrative adjustment requires a non-empty reason, which is recorded in the resulting audit log entry.
 - BR-42: An administrative adjustment can never leave a balance negative, enforced the same way as an ordinary transfer (BR-12).
 

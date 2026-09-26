@@ -86,10 +86,18 @@ export async function transferPoints({ senderId, recipientId, amount }) {
     const recipientBalanceAfter = creditResult.rows[0].balance;
 
     const transactionResult = await client.query(
-      `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type, created_at`,
-      [senderId, recipientId, amount, senderBalanceAfter, recipientBalanceAfter]
+      `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $1)
+       RETURNING id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at`,
+      [
+        senderId,
+        recipientId,
+        amount,
+        Number(senderBalanceAfter) + amount,
+        senderBalanceAfter,
+        Number(recipientBalanceAfter) - amount,
+        recipientBalanceAfter,
+      ]
     );
 
     await client.query('COMMIT');
@@ -136,10 +144,10 @@ export async function transferFromUnlimitedSender({ senderId, recipientId, amoun
     const recipientBalanceAfter = creditResult.rows[0].balance;
 
     const transactionResult = await client.query(
-      `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type)
-       VALUES ($1, $2, $3, NULL, $4, 'transfer')
-       RETURNING id, sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type, created_at`,
-      [senderId, recipientId, amount, recipientBalanceAfter]
+      `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type)
+       VALUES ($1, $2, $3, NULL, $4, $5, $1, 'transfer')
+       RETURNING id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at`,
+      [senderId, recipientId, amount, Number(recipientBalanceAfter) - amount, recipientBalanceAfter]
     );
 
     await client.query('COMMIT');
@@ -218,10 +226,10 @@ export async function adjustBalance({ adminId, targetUserId, operation, amount }
       const transactionType = `admin_${operation}`;
 
       const transactionResult = await client.query(
-        `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type)
-         VALUES ($1, $2, $3, NULL, $4, $5)
-         RETURNING id, sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type, created_at`,
-        [adminId, targetUserId, Math.abs(delta), newBalance, transactionType]
+        `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type)
+         VALUES ($1, $2, $3, NULL, $4, $5, $1, $6)
+         RETURNING id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at`,
+        [adminId, targetUserId, Math.abs(delta), oldBalance, newBalance, transactionType]
       );
 
       transaction = transactionResult.rows[0];
@@ -244,7 +252,7 @@ export async function adjustBalance({ adminId, targetUserId, operation, amount }
  */
 export async function getTransactions(userId) {
   const result = await pool.query(
-    `SELECT id, sender_id, recipient_id, amount, sender_balance_after, recipient_balance_after, transaction_type, created_at
+    `SELECT id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at
      FROM wallet_transactions
      WHERE sender_id = $1 OR recipient_id = $1
      ORDER BY created_at DESC`,

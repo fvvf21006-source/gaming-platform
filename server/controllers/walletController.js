@@ -31,7 +31,11 @@ export async function transfer(req, res, next) {
 
 export async function transactions(req, res, next) {
   try {
-    const result = await walletService.getTransactionHistory(req.user.userId);
+    const result = await walletService.getTransactionHistory({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      targetUserId: req.query.userId,
+    });
 
     res.status(200).json(result);
   } catch (err) {

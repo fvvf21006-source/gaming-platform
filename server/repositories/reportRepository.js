@@ -5,28 +5,22 @@
 
 import pool from '../database/connection.js';
 
-// Shared hierarchy-scoping fragment: self + every descendant of
-// $1, found by walking created_by — the same recursive idiom
-// userRepository.isSelfOrDescendant/findDescendantsAndSelf already
-// use. Kept as one constant so both report queries below scope
-// identically rather than each redefining their own copy.
+// Shared hierarchy-scoping fragment: the requester plus the users
+// they directly created (immediate child tier only — never deeper
+// levels). Kept as one constant so both report queries below scope
+// identically.
 const DESCENDANTS_AND_SELF_CTE = `
-  WITH RECURSIVE descendants AS (
-    SELECT id FROM users WHERE id = $1
-
-    UNION ALL
-
-    SELECT u.id FROM users u
-    INNER JOIN descendants d ON u.created_by = d.id
+  WITH descendants AS (
+    SELECT id FROM users WHERE $4::boolean OR id = $1 OR created_by = $1
   )
 `;
 
 /**
- * Every wallet_transactions row sent by the requester or anyone in
- * their descendant hierarchy, optionally date-filtered.
- * @param {{requesterId: string, startDate: string|null, endDate: string|null}} input
+ * Every wallet_transactions row sent or received by the requester or
+ * their direct children (everyone, when isGlobal — Super Admin), optionally date-filtered.
+ * @param {{requesterId: string, isGlobal: boolean, startDate: string|null, endDate: string|null}} input
  */
-export async function getPointDistributionTransactions({ requesterId, startDate, endDate }) {
+export async function getPointDistributionTransactions({ requesterId, isGlobal, startDate, endDate }) {
   const result = await pool.query(
     `${DESCENDANTS_AND_SELF_CTE}
      SELECT
@@ -41,22 +35,22 @@ export async function getPointDistributionTransactions({ requesterId, startDate,
      FROM wallet_transactions t
      JOIN users sender ON sender.id = t.sender_id
      JOIN users recipient ON recipient.id = t.recipient_id
-     WHERE t.sender_id IN (SELECT id FROM descendants)
+     WHERE (t.sender_id IN (SELECT id FROM descendants) OR t.recipient_id IN (SELECT id FROM descendants))
        AND ($2::timestamptz IS NULL OR t.created_at >= $2)
        AND ($3::timestamptz IS NULL OR t.created_at <= $3)
      ORDER BY t.created_at DESC`,
-    [requesterId, startDate, endDate]
+    [requesterId, startDate, endDate, isGlobal]
   );
 
   return result.rows;
 }
 
 /**
- * Every game_sessions row belonging to the requester or anyone in
- * their descendant hierarchy, optionally date-filtered.
- * @param {{requesterId: string, startDate: string|null, endDate: string|null}} input
+ * Every game_sessions row belonging to the requester or their direct
+ * children (everyone, when isGlobal — Super Admin), optionally date-filtered.
+ * @param {{requesterId: string, isGlobal: boolean, startDate: string|null, endDate: string|null}} input
  */
-export async function getPlayerActivitySessions({ requesterId, startDate, endDate }) {
+export async function getPlayerActivitySessions({ requesterId, isGlobal, startDate, endDate }) {
   const result = await pool.query(
     `${DESCENDANTS_AND_SELF_CTE}
      SELECT
@@ -77,7 +71,7 @@ export async function getPlayerActivitySessions({ requesterId, startDate, endDat
        AND ($2::timestamptz IS NULL OR s.started_at >= $2)
        AND ($3::timestamptz IS NULL OR s.started_at <= $3)
      ORDER BY s.started_at DESC`,
-    [requesterId, startDate, endDate]
+    [requesterId, startDate, endDate, isGlobal]
   );
 
   return result.rows;

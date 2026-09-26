@@ -42,6 +42,17 @@ function toPublicUser(row) {
   };
 }
 
+// Super Admin has global access; every other role reaches only their
+// own account and the users they directly created (immediate child
+// tier). Nothing else in this file decides visibility.
+async function canAccessUser(requesterId, requesterRole, targetId) {
+  if (requesterRole === 'super_admin') {
+    return true;
+  }
+
+  return userRepository.isSelfOrDirectChild(requesterId, targetId);
+}
+
 // Postgres unique_violation error code.
 const UNIQUE_VIOLATION = '23505';
 
@@ -133,13 +144,16 @@ export async function createUser({
 }
 
 /**
- * Returns the requester's own record plus every user in their
- * descendant hierarchy (BR-8). A Player, having no descendants,
- * sees only themselves.
+ * Returns the requester's own record plus the users they directly
+ * created — their immediate child tier only, never deeper levels
+ * (BR-8). A Player, having no children, sees only themselves.
  * @param {string} requesterId
  */
-export async function getVisibleUsers(requesterId) {
-  const rows = await userRepository.findDescendantsAndSelf(requesterId);
+export async function getVisibleUsers(requesterId, requesterRole) {
+  const rows =
+    requesterRole === 'super_admin'
+      ? await userRepository.findAllUsers()
+      : await userRepository.findChildrenAndSelf(requesterId);
   const items = rows.map(toPublicUser);
 
   return { items, total: items.length };
@@ -147,18 +161,19 @@ export async function getVisibleUsers(requesterId) {
 
 /**
  * Returns a single user, if the requester is allowed to view them
- * (self or an ancestor — BR-8).
+ * (self or their direct parent — BR-8).
  * @param {string} requesterId
+ * @param {string} requesterRole
  * @param {string} targetId
  */
-export async function getUserById(requesterId, targetId) {
+export async function getUserById(requesterId, requesterRole, targetId) {
   const target = await userRepository.findUserById(targetId);
 
   if (!target) {
     throw notFound('User not found');
   }
 
-  const visible = await userRepository.isSelfOrDescendant(requesterId, targetId);
+  const visible = await canAccessUser(requesterId, requesterRole, targetId);
 
   if (!visible) {
     throw forbidden('User is outside your hierarchy');
@@ -169,24 +184,25 @@ export async function getUserById(requesterId, targetId) {
 
 /**
  * Updates email, status, and/or profile fields for a user the
- * requester may act on (self or an ancestor — BR-8). Role changes
+ * requester may act on (self or their direct parent — BR-8). Role changes
  * are never accepted here (enforced by the validator, which rejects
  * a `role` field before this is even called).
  *
  * Status changes are restricted to ancestors — never self (BR-19) —
  * even though status is accepted through this same endpoint.
  * @param {string} requesterId
+ * @param {string} requesterRole
  * @param {string} targetId
  * @param {{email?: string, status?: string, fullName?: string, displayName?: string, avatarUrl?: string}} updates
  */
-export async function updateUser(requesterId, targetId, updates) {
+export async function updateUser(requesterId, requesterRole, targetId, updates) {
   const target = await userRepository.findUserById(targetId);
 
   if (!target) {
     throw notFound('User not found');
   }
 
-  const visible = await userRepository.isSelfOrDescendant(requesterId, targetId);
+  const visible = await canAccessUser(requesterId, requesterRole, targetId);
 
   if (!visible) {
     throw forbidden('User is outside your hierarchy');
@@ -252,10 +268,11 @@ export async function updateUser(requesterId, targetId, updates) {
  * Activates, suspends, or freezes a user. Only an ancestor may do
  * this — never the user themselves (BR-19).
  * @param {string} requesterId
+ * @param {string} requesterRole
  * @param {string} targetId
  * @param {string} status
  */
-export async function updateUserStatus(requesterId, targetId, status) {
+export async function updateUserStatus(requesterId, requesterRole, targetId, status) {
   const target = await userRepository.findUserById(targetId);
 
   if (!target) {
@@ -266,7 +283,7 @@ export async function updateUserStatus(requesterId, targetId, status) {
     throw forbidden('You cannot change your own account status');
   }
 
-  const isAncestor = await userRepository.isSelfOrDescendant(requesterId, targetId);
+  const isAncestor = await canAccessUser(requesterId, requesterRole, targetId);
 
   if (!isAncestor) {
     throw forbidden('User is outside your hierarchy');
@@ -296,18 +313,18 @@ export async function updateUserStatus(requesterId, targetId, status) {
  * password (P08 Part 4). Hierarchy-based, ancestor-only — a user can
  * never reset their own password this way (use PUT
  * /api/auth/change-password for that); an admin may only reset a
- * password for someone in their own descendant hierarchy (BR-8),
- * broader than transferPoints' direct-child-only rule, same as
- * adjustBalance. The route layer already excludes Player (BR:
+ * password for their own account's direct children (BR-8); Super
+ * Admin may reset anyone. The route layer already excludes Player (BR:
  * "Players cannot reset other users").
  *
  * The administrator never chooses the temporary password — it is
  * always generated here and returned exactly once; the caller
  * (controller) must not log or persist the plaintext anywhere.
  * @param {string} requesterId
+ * @param {string} requesterRole
  * @param {string} targetId
  */
-export async function resetUserPassword(requesterId, targetId) {
+export async function resetUserPassword(requesterId, requesterRole, targetId) {
   const target = await userRepository.findUserById(targetId);
 
   if (!target) {
@@ -318,7 +335,7 @@ export async function resetUserPassword(requesterId, targetId) {
     throw forbidden('Use change-password to reset your own password');
   }
 
-  const isAncestor = await userRepository.isSelfOrDescendant(requesterId, targetId);
+  const isAncestor = await canAccessUser(requesterId, requesterRole, targetId);
 
   if (!isAncestor) {
     throw forbidden('User is outside your hierarchy');

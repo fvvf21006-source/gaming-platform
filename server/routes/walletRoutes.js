@@ -5,6 +5,7 @@ import { authorize } from '../middleware/authorize.js';
 import {
   transferValidationRules,
   adjustBalanceValidationRules,
+  transactionsQueryValidationRules,
   handleValidationErrors,
 } from '../validators/walletValidator.js';
 
@@ -29,7 +30,13 @@ router.post(
   walletController.transfer
 );
 
-router.get('/transactions', authenticate, walletController.transactions);
+router.get(
+  '/transactions',
+  authenticate,
+  transactionsQueryValidationRules,
+  handleValidationErrors,
+  walletController.transactions
+);
 
 // Administrative point management (P08 Part 2) — same role gate as
 // /transfer; the "only within your hierarchy" restriction for
