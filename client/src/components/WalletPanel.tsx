@@ -76,6 +76,7 @@ export default function WalletPanel({ currentUser }: Props) {
   }, [allTx, currentUser.id]);
   const shown = allTx.filter((t) => typeFilter === "all" || t.transactionType === typeFilter);
   const watchedAmount = transferForm.watch("amount");
+  const selectedAdjustTarget = adjustTargets.find((u) => u.id === adjustForm.watch("userId"));
   const selectedRecipient = directChildren.find((u) => u.id === transferForm.watch("recipientId"));
   const balance = Number(wallet?.balance ?? 0);
   const overBalance = !isSuperAdmin && Number(watchedAmount) > balance;
@@ -213,6 +214,11 @@ export default function WalletPanel({ currentUser }: Props) {
                     <option value="">Choose an account…</option>
                     {adjustTargets.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
                   </select>
+                  {selectedAdjustTarget && selectedAdjustTarget.balance !== null && (
+                    <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted-foreground)" }}>
+                      {selectedAdjustTarget.username} currently has <b className="font-mono-data" style={{ color: "#FFD166" }}>◆ {formatPoints(selectedAdjustTarget.balance)}</b>
+                    </div>
+                  )}
                 </Field>
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1 }}>
