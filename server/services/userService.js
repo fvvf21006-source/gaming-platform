@@ -31,6 +31,7 @@ function toPublicUser(row) {
     email: row.email,
     role: row.role,
     status: row.status,
+    balance: row.balance ?? null,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

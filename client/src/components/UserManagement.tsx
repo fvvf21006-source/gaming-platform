@@ -1,3 +1,4 @@
+import { formatPoints } from "../utils/points";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -320,6 +321,7 @@ function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "14px 0" }}>
         <RolePill role={user.role} />
         <StatusPill status={user.status} />
+        {user.balance !== null && <span className="font-mono-data" style={{ fontSize: 12, fontWeight: 700, color: "#FFD166", background: "rgba(255,209,102,.1)", border: "1px solid rgba(255,209,102,.25)", borderRadius: 999, padding: "3px 10px" }}>◆ {formatPoints(user.balance)}</span>}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ fontSize: 11, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
@@ -343,6 +345,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: User[] } & R
               <th style={{ textAlign: "left" }}>ID</th>
               <th style={{ textAlign: "left" }}>Role</th>
               <th style={{ textAlign: "left" }}>Status</th>
+              <th style={{ textAlign: "right" }}>Points</th>
               <th style={{ textAlign: "left" }}>Joined</th>
               <th style={{ textAlign: "right", paddingRight: 20 }}>Actions</th>
             </tr>
@@ -362,6 +365,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: User[] } & R
                 <td><span className="font-mono-data" title={u.id} style={{ fontSize: 12, color: "var(--gold-dim)" }}>{shortId(u.id)}</span></td>
                 <td><RolePill role={u.role} /></td>
                 <td><StatusPill status={u.status} /></td>
+                <td className="font-mono-data" style={{ textAlign: "right", fontWeight: 700, color: "#FFD166" }}>{u.balance !== null ? `◆ ${formatPoints(u.balance)}` : "—"}</td>
                 <td style={{ fontSize: 13, color: "var(--muted-foreground)" }}>{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td style={{ paddingRight: 20 }}><div style={{ display: "flex", justifyContent: "flex-end" }}><RowActions user={u} onToggle={onToggle} onReset={onReset} /></div></td>
               </tr>

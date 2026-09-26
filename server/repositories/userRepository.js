@@ -120,10 +120,12 @@ export async function findUserById(id) {
        r.name AS role,
        p.full_name,
        p.display_name,
-       p.avatar_url
+       p.avatar_url,
+       w.balance
      FROM users u
      JOIN roles r ON r.id = u.role_id
      LEFT JOIN user_profiles p ON p.user_id = u.id
+     LEFT JOIN wallets w ON w.user_id = u.id
      WHERE u.id = $1`,
     [id]
   );
@@ -150,10 +152,12 @@ export async function findChildrenAndSelf(requesterId) {
        r.name AS role,
        p.full_name,
        p.display_name,
-       p.avatar_url
+       p.avatar_url,
+       w.balance
      FROM users u
      JOIN roles r ON r.id = u.role_id
      LEFT JOIN user_profiles p ON p.user_id = u.id
+     LEFT JOIN wallets w ON w.user_id = u.id
      WHERE u.id = $1 OR u.created_by = $1
      ORDER BY u.created_at ASC`,
     [requesterId]
@@ -179,10 +183,12 @@ export async function findAllUsers() {
        r.name AS role,
        p.full_name,
        p.display_name,
-       p.avatar_url
+       p.avatar_url,
+       w.balance
      FROM users u
      JOIN roles r ON r.id = u.role_id
      LEFT JOIN user_profiles p ON p.user_id = u.id
+     LEFT JOIN wallets w ON w.user_id = u.id
      ORDER BY u.created_at ASC`
   );
 

@@ -93,6 +93,8 @@ export interface User {
   email: string;
   role: Role;
   status: "active" | "frozen";
+  /** Current points; null for accounts without a wallet (Super Admin). */
+  balance: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
