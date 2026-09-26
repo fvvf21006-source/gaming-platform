@@ -76,6 +76,7 @@ export default function WalletPanel({ currentUser }: Props) {
   }, [allTx, currentUser.id]);
   const shown = allTx.filter((t) => typeFilter === "all" || t.transactionType === typeFilter);
   const watchedAmount = transferForm.watch("amount");
+  const selectedRecipient = directChildren.find((u) => u.id === transferForm.watch("recipientId"));
   const balance = Number(wallet?.balance ?? 0);
   const overBalance = !isSuperAdmin && Number(watchedAmount) > balance;
 
@@ -182,6 +183,11 @@ export default function WalletPanel({ currentUser }: Props) {
                     <option value="">Choose an account…</option>
                     {directChildren.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
                   </select>
+                  {selectedRecipient && selectedRecipient.balance !== null && (
+                    <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted-foreground)" }}>
+                      {selectedRecipient.username} currently has <b className="font-mono-data" style={{ color: "#FFD166" }}>◆ {formatPoints(selectedRecipient.balance)}</b>
+                    </div>
+                  )}
                 </Field>
                 <Field label="Amount" error={transferForm.formState.errors.amount?.message}>
                   <input type="number" min={1} step={1} placeholder="0" className="wl-input wl-amount" {...transferForm.register("amount")} />
