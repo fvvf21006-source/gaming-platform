@@ -117,7 +117,7 @@ export interface Transaction {
   recipientId: string;
   amount: string;
   senderBalanceAfter: string | null;
-  recipientBalanceAfter: string;
+  recipientBalanceAfter: string | null;
   transactionType: "transfer" | "admin_add" | "admin_remove" | "admin_set";
   createdAt: string;
 }

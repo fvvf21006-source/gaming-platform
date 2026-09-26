@@ -178,7 +178,9 @@ const OPERATION_VERBS = { add: 'added to', remove: 'removed from', set: 'set on'
  * Part 2). Super Admin may adjust anyone; a hierarchy admin
  * (Level 1–3) may only adjust a user they directly created — the
  * same direct-child rule transferPoints uses. Nobody adjusts their
- * own balance.
+ * own balance. Points are conserved: an increase is paid from the
+ * administrator's own balance and a decrease is returned to it
+ * (Super Admin, having no wallet, is unlimited on both sides).
  * @param {{adminId: string, adminRole: string, targetUserId: string, operation: 'add'|'remove'|'set', amount: number, reason: string}} input
  */
 export async function adjustBalance({ adminId, adminRole, targetUserId, operation, amount, reason }) {
@@ -201,10 +203,19 @@ export async function adjustBalance({ adminId, adminRole, targetUserId, operatio
   let result;
 
   try {
-    result = await walletRepository.adjustBalance({ adminId, targetUserId, operation, amount });
+    result = await walletRepository.adjustBalance({
+      adminId,
+      adminIsSuperAdmin: adminRole === 'super_admin',
+      targetUserId,
+      operation,
+      amount,
+    });
   } catch (err) {
     if (err.code === 'INSUFFICIENT_BALANCE') {
       throw conflict('This adjustment would make the balance negative');
+    }
+    if (err.code === 'ADMIN_INSUFFICIENT_BALANCE') {
+      throw conflict('Your balance is too low to cover this adjustment');
     }
     if (err.code === 'WALLET_NOT_FOUND') {
       throw notFound('User has no wallet');

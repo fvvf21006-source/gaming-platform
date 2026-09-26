@@ -70,7 +70,7 @@ This is the authoritative list of business rules for the platform. Every service
 
 ## Administrative Point Management
 
-- BR-40: Super Admin may administratively adjust (add, remove, or set) any user's balance except its own Super Admin peers (Super Admin has no wallet). A Level 1–3 admin may only adjust a user they directly created — never themselves, never deeper descendants (same direct-child rule as transfers).
+- BR-40: Super Admin may administratively adjust (add, remove, or set) any user's balance except its own Super Admin peers (Super Admin has no wallet). A Level 1–3 admin may only adjust a user they directly created — never themselves, never deeper descendants (same direct-child rule as transfers). Adjustments conserve points: an increase is paid from the administrator's own balance, a decrease is returned to it (recorded as target → administrator); Super Admin has no wallet, so nothing is debited or credited on its side.
 - BR-41: Every administrative adjustment requires a non-empty reason, which is recorded in the resulting audit log entry.
 - BR-42: An administrative adjustment can never leave a balance negative, enforced the same way as an ordinary transfer (BR-12).
 

@@ -27,6 +27,7 @@ export async function findWalletByUserId(userId) {
 export const INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE';
 export const RECIPIENT_WALLET_NOT_FOUND = 'RECIPIENT_WALLET_NOT_FOUND';
 export const WALLET_NOT_FOUND = 'WALLET_NOT_FOUND';
+export const ADMIN_INSUFFICIENT_BALANCE = 'ADMIN_INSUFFICIENT_BALANCE';
 
 /**
  * Debits the sender, credits the recipient, and records the
@@ -161,43 +162,51 @@ export async function transferFromUnlimitedSender({ senderId, recipientId, amoun
 }
 
 /**
- * Administratively adds, removes, or sets a user's balance (P08
- * Part 2). Unlike transferPoints, this isn't a peer-to-peer
- * hierarchy transfer, so it uses SELECT ... FOR UPDATE to lock the
- * row and compute the new balance in application code rather than
- * the conditional-UPDATE-as-guard idiom transferPoints uses — 'set'
- * can't be expressed as a simple "WHERE balance >= x" guard the way
- * a debit can, so all three operations go through one consistent,
- * still-atomic path. No business rules here (hierarchy, reason
- * validation) — those live in walletService.
+ * Administratively adds, removes, or sets a user's balance. Points
+ * are conserved: an increase is paid by the administrator's wallet
+ * (like a transfer down) and a decrease is returned to the
+ * administrator's wallet (a transfer back up). Super Admin has no
+ * wallet, so on Super Admin's side nothing is debited or credited
+ * and the balance columns are NULL.
  *
- * If the operation would leave the balance negative, throws with
- * code INSUFFICIENT_BALANCE (same sentinel transferPoints uses) and
- * rolls back. If the delta is zero (e.g. a 'set' to the current
- * balance), no wallet_transactions row is written — amount there
- * must be positive (chk_wallet_transactions_amount_positive) and a
- * true no-op has nothing to record — but the caller still gets the
- * unchanged balance back so it can still notify/audit-log if desired.
- * @param {{adminId: string, targetUserId: string, operation: 'add'|'remove'|'set', amount: number}} input
+ * Both wallet rows are locked together, in a fixed order, so
+ * concurrent adjustments can't deadlock or double-spend. If the
+ * target would go negative — or the administrator can't cover an
+ * increase — it throws INSUFFICIENT_BALANCE / ADMIN_INSUFFICIENT_BALANCE
+ * and rolls back. A zero delta writes nothing (amount must be
+ * positive in the ledger). No business rules here — see walletService.
+ * @param {{adminId: string, adminIsSuperAdmin: boolean, targetUserId: string, operation: 'add'|'remove'|'set', amount: number}} input
  * @returns {{transaction: object|null, oldBalance: number, newBalance: number}}
  */
-export async function adjustBalance({ adminId, targetUserId, operation, amount }) {
+export async function adjustBalance({ adminId, adminIsSuperAdmin, targetUserId, operation, amount }) {
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    const current = await client.query('SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE', [
-      targetUserId,
-    ]);
+    const lockIds = adminIsSuperAdmin ? [targetUserId] : [targetUserId, adminId];
+    const locked = await client.query(
+      'SELECT user_id, balance FROM wallets WHERE user_id = ANY($1::uuid[]) ORDER BY user_id FOR UPDATE',
+      [lockIds]
+    );
 
-    if (current.rowCount === 0) {
+    const targetRow = locked.rows.find((row) => row.user_id === targetUserId);
+
+    if (!targetRow) {
       const err = new Error('Wallet not found');
       err.code = WALLET_NOT_FOUND;
       throw err;
     }
 
-    const oldBalance = Number(current.rows[0].balance);
+    const adminRow = adminIsSuperAdmin ? null : locked.rows.find((row) => row.user_id === adminId);
+
+    if (!adminIsSuperAdmin && !adminRow) {
+      const err = new Error('Administrator wallet not found');
+      err.code = WALLET_NOT_FOUND;
+      throw err;
+    }
+
+    const oldBalance = Number(targetRow.balance);
     let newBalance;
 
     if (operation === 'add') {
@@ -214,22 +223,45 @@ export async function adjustBalance({ adminId, targetUserId, operation, amount }
       throw err;
     }
 
-    await client.query('UPDATE wallets SET balance = $1, updated_at = now() WHERE user_id = $2', [
-      newBalance,
-      targetUserId,
-    ]);
-
     const delta = newBalance - oldBalance;
     let transaction = null;
 
     if (delta !== 0) {
-      const transactionType = `admin_${operation}`;
+      const increase = delta > 0;
+      const moved = Math.abs(delta);
+      const adminOld = adminRow ? Number(adminRow.balance) : null;
+      const adminNew = adminRow ? (increase ? adminOld - moved : adminOld + moved) : null;
+
+      if (adminNew !== null && adminNew < 0) {
+        const err = new Error('Administrator balance is too low');
+        err.code = ADMIN_INSUFFICIENT_BALANCE;
+        throw err;
+      }
+
+      await client.query('UPDATE wallets SET balance = $1, updated_at = now() WHERE user_id = $2', [
+        newBalance,
+        targetUserId,
+      ]);
+
+      if (adminRow) {
+        await client.query('UPDATE wallets SET balance = $1, updated_at = now() WHERE user_id = $2', [
+          adminNew,
+          adminId,
+        ]);
+      }
+
+      // Increase: admin -> target. Decrease: target -> admin (the
+      // debited account is always the sender, so a removal shows as
+      // a deduction in the target's history).
+      const [senderId, recipientId, senderBefore, senderAfter, recipientBefore, recipientAfter] = increase
+        ? [adminId, targetUserId, adminOld, adminNew, oldBalance, newBalance]
+        : [targetUserId, adminId, oldBalance, newBalance, adminOld, adminNew];
 
       const transactionResult = await client.query(
-        `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type)
-         VALUES ($1, $2, $3, NULL, $4, $5, $1, $6)
+        `INSERT INTO wallet_transactions (sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at`,
-        [adminId, targetUserId, Math.abs(delta), oldBalance, newBalance, transactionType]
+        [senderId, recipientId, moved, senderBefore, senderAfter, recipientBefore, recipientAfter, adminId, `admin_${operation}`]
       );
 
       transaction = transactionResult.rows[0];
