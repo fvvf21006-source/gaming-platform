@@ -38,7 +38,7 @@ export default function WalletPanel({ currentUser }: Props) {
 
   const { data: usersData } = useUsers();
   const { data: wallet } = useWallet(!isSuperAdmin);
-  const { data: txData } = useTransactionHistory(!isSuperAdmin);
+  const { data: txData } = useTransactionHistory(true);
   const transferMutation = useTransferPoints();
   const adjustMutation = useAdjustBalance();
   const [typeFilter, setTypeFilter] = useState<"all" | TxType>("all");
@@ -104,60 +104,58 @@ export default function WalletPanel({ currentUser }: Props) {
             </div>
 
             <div className="wl-mini">
-              <MiniStat label="Received" value={isSuperAdmin ? "—" : `+${formatPoints(received)}`} color="var(--neon-green)" icon="↓" />
-              <MiniStat label="Sent" value={isSuperAdmin ? "—" : `−${formatPoints(sent)}`} color="var(--neon-pink)" icon="↑" />
-              <MiniStat label="Transactions" value={isSuperAdmin ? "—" : String(allTx.length)} color="#FFD166" icon="⇄" />
+              <MiniStat label="Received" value={`+${formatPoints(received)}`} color="var(--neon-green)" icon="↓" />
+              <MiniStat label="Sent" value={`−${formatPoints(sent)}`} color="var(--neon-pink)" icon="↑" />
+              <MiniStat label="Transactions" value={String(allTx.length)} color="#FFD166" icon="⇄" />
             </div>
           </div>
 
-          {!isSuperAdmin && (
-            <div style={{ ...card, padding: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-                <div>
-                  <div style={{ fontSize: 17, fontWeight: 700 }}>Transaction history</div>
-                  <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{shown.length} of {allTx.length} shown</div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {(["all", "transfer", "admin_add", "admin_remove", "admin_set"] as const).map((f) => (
-                    <button key={f} onClick={() => setTypeFilter(f)} aria-pressed={typeFilter === f} className={`wl-chip ${typeFilter === f ? "on" : ""}`}>
-                      {f === "all" ? "All" : TX_META[f].label}
-                    </button>
-                  ))}
-                </div>
+          <div style={{ ...card, padding: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700 }}>Transaction history</div>
+                <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{shown.length} of {allTx.length} shown</div>
               </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(["all", "transfer", "admin_add", "admin_remove", "admin_set"] as const).map((f) => (
+                  <button key={f} onClick={() => setTypeFilter(f)} aria-pressed={typeFilter === f} className={`wl-chip ${typeFilter === f ? "on" : ""}`}>
+                    {f === "all" ? "All" : TX_META[f].label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              {shown.length === 0 ? (
-                <div style={{ padding: "40px 10px", textAlign: "center", color: "var(--muted-foreground)" }}>
-                  <div style={{ fontSize: 38, marginBottom: 6 }}>🧾</div>
-                  {typeFilter === "all" ? "No transactions yet." : "No transactions match this filter."}
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {shown.map((t) => {
-                    const meta = TX_META[t.transactionType];
-                    const outgoing = t.senderId === currentUser.id;
-                    return (
-                      <div key={t.id} className="wl-row">
-                        <div style={{ width: 42, height: 42, borderRadius: 14, background: `${meta.color}1c`, color: meta.color, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{meta.icon}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {resolveName(t.senderId)} <span style={{ color: "var(--muted-foreground)" }}>→</span> {resolveName(t.recipientId)}
-                          </div>
-                          <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-                            <span style={{ color: meta.color, fontWeight: 600 }}>{meta.label}</span> · {new Date(t.createdAt).toLocaleString()}
-                          </div>
+            {shown.length === 0 ? (
+              <div style={{ padding: "40px 10px", textAlign: "center", color: "var(--muted-foreground)" }}>
+                <div style={{ fontSize: 38, marginBottom: 6 }}>🧾</div>
+                {typeFilter === "all" ? "No transactions yet." : "No transactions match this filter."}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {shown.map((t) => {
+                  const meta = TX_META[t.transactionType];
+                  const outgoing = t.senderId === currentUser.id;
+                  return (
+                    <div key={t.id} className="wl-row">
+                      <div style={{ width: 42, height: 42, borderRadius: 14, background: `${meta.color}1c`, color: meta.color, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{meta.icon}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {resolveName(t.senderId)} <span style={{ color: "var(--muted-foreground)" }}>→</span> {resolveName(t.recipientId)}
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: outgoing ? "var(--neon-pink)" : "var(--neon-green)" }}>{outgoing ? "−" : "+"}{formatPoints(t.amount)}</div>
-                          <div className="font-mono-data" title={t.id} style={{ fontSize: 10, color: "var(--muted-foreground)" }}>#{shortId(t.id)}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
+                          <span style={{ color: meta.color, fontWeight: 600 }}>{meta.label}</span> · {new Date(t.createdAt).toLocaleString()}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: outgoing ? "var(--neon-pink)" : "var(--neon-green)" }}>{outgoing ? "−" : "+"}{formatPoints(t.amount)}</div>
+                        <div className="font-mono-data" title={t.id} style={{ fontSize: 10, color: "var(--muted-foreground)" }}>#{shortId(t.id)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ───────── right: move points ───────── */}
