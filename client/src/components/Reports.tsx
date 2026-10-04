@@ -37,13 +37,14 @@ function downloadText(text: string, filename: string) {
 
 export default function Reports({ currentUser }: Props) {
   const canSeeLogin = can(currentUser.role, "reports.loginReport");
+  const canSeeActivity = can(currentUser.role, "reports.playerActivity");
   const [tab, setTab] = useState<Tab>("distribution");
   const [bucket, setBucket] = useState<Bucket>("day");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
   const distribution = usePointDistributionReport(tab === "distribution", startDate || undefined, endDate || undefined);
-  const activity = usePlayerActivityReport(tab === "activity", startDate || undefined, endDate || undefined);
+  const activity = usePlayerActivityReport(tab === "activity" && canSeeActivity, startDate || undefined, endDate || undefined);
   const login = useLoginReport(tab === "login" && canSeeLogin, startDate || undefined, endDate || undefined);
 
   const chartData = useMemo(() => {
@@ -79,7 +80,7 @@ export default function Reports({ currentUser }: Props) {
         <div style={{ display: "flex", background: "var(--muted)", borderRadius: 10, padding: 3, gap: 2 }}>
           {([
             ["distribution", "Point Distribution"],
-            ["activity", "Player Activity"],
+            ...(canSeeActivity ? [["activity", "Player Activity"] as [Tab, string]] : []),
             ...(canSeeLogin ? [["login", "Login Report"] as [Tab, string]] : []),
           ] as [Tab, string][]).map(([id, label]) => (
             <button
@@ -153,7 +154,7 @@ export default function Reports({ currentUser }: Props) {
         </>
       )}
 
-      {tab === "activity" && activity.data && (
+      {tab === "activity" && canSeeActivity && activity.data && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
             <SummaryCard label="Sessions" value={String(activity.data.summary.sessionCount)} color="var(--neon-cyan)" />

@@ -19,7 +19,7 @@ router.get('/', authenticate, authorize(['player']), gameController.list);
 router.get(
   '/active-sessions',
   authenticate,
-  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  authorize(['super_admin', 'level_3']),
   gameController.getActiveSessions
 );
 
@@ -49,7 +49,7 @@ router.post(
 router.post(
   '/sessions/:sessionId/alter',
   authenticate,
-  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  authorize(['super_admin', 'level_3']),
   sessionIdParamValidationRules,
   alterSessionValidationRules,
   handleValidationErrors,

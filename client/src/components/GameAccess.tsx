@@ -528,6 +528,8 @@ function PlayerGameAccess({}: Props) {
 
   const wins = history.filter((s) => s.status === "completed" && (s.score ?? 0) > 0).length;
   const totalSpent = history.reduce((sum, s) => sum + s.pointsSpent, 0);
+  const totalWon = history.reduce((sum, s) => sum + Number(s.score ?? 0), 0);
+  const netResult = totalWon - totalSpent;
 
   const pickGame = (g: Game) => {
     setStartError("");
@@ -584,6 +586,8 @@ function PlayerGameAccess({}: Props) {
           { label: "Sessions Played", value: history.length.toString(), color: "var(--neon-cyan)" },
           { label: "Scored > 0", value: wins.toString(), color: "var(--neon-green)" },
           { label: "Total Points Spent", value: formatPoints(totalSpent), color: "var(--gold)" },
+          { label: "Total Points Won", value: formatPoints(totalWon), color: "var(--neon-green)" },
+          { label: "Net Won / Lost", value: `${netResult > 0 ? "+" : ""}${formatPoints(netResult)}`, color: netResult >= 0 ? "var(--neon-green)" : "var(--neon-pink)" },
         ].map((s) => (
           <div key={s.label} style={{ flex: "1 1 160px", background: "var(--card)", border: "1px solid rgba(201,153,58,0.12)", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{s.label}</span>

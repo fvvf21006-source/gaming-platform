@@ -20,7 +20,7 @@ router.get(
 router.get(
   '/player-activity',
   authenticate,
-  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  authorize(['super_admin', 'level_3']),
   dateRangeValidationRules,
   handleValidationErrors,
   reportController.playerActivity

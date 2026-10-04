@@ -180,7 +180,7 @@ export async function getHistory(userId) {
  * @param {string} requesterRole
  */
 export async function getActiveSessions(requesterId, requesterRole) {
-  const ALLOWED_ROLES = ['super_admin', 'level_1', 'level_2', 'level_3'];
+  const ALLOWED_ROLES = ['super_admin', 'level_3'];
   if (!ALLOWED_ROLES.includes(requesterRole)) {
     throw forbidden('Only Level 3 users and administrators can view active game sessions');
   }
@@ -196,7 +196,7 @@ export async function getActiveSessions(requesterId, requesterRole) {
  * @param {{requesterId: string, requesterRole: string, sessionId: string, score?: number, reason?: string}} input
  */
 export async function alterSession({ requesterId, requesterRole, sessionId, score = 0, reason }) {
-  const ALLOWED_ROLES = ['super_admin', 'level_1', 'level_2', 'level_3'];
+  const ALLOWED_ROLES = ['super_admin', 'level_3'];
   if (!ALLOWED_ROLES.includes(requesterRole)) {
     throw forbidden('Only Level 3 users and administrators can alter game sessions');
   }

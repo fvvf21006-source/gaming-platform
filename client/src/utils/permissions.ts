@@ -9,6 +9,7 @@ export type Permission =
   | "wallet.adjust"
   | "game.play"
   | "game.alter"
+  | "reports.playerActivity"
   | "reports.view"
   | "reports.loginReport"
   | "audit.view";
@@ -25,12 +26,13 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "wallet.adjust",
     "game.alter",
     "reports.view",
+    "reports.playerActivity",
     "reports.loginReport",
     "audit.view",
   ],
-  level_1: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
-  level_2: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
-  level_3: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
+  level_1: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],
+  level_2: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],
+  level_3: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view", "reports.playerActivity"],
   player: ["wallet.view", "game.play"],
 };
 
