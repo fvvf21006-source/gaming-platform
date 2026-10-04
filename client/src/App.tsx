@@ -12,7 +12,7 @@ import AuditLogs from "./components/AuditLogs";
 import UserProfile from "./components/UserProfile";
 import ForcedPasswordChange from "./components/ForcedPasswordChange";
 import PlayerApp from "./components/player/PlayerApp";
-import { clearToken, fetchMe, getToken, type AuthUser } from "./api/client";
+import { clearToken, fetchMe, getToken, sendHeartbeat, type AuthUser } from "./api/client";
 import { can, type Permission } from "./utils/permissions";
 
 const ROUTE_PERMISSIONS: Record<string, Permission> = {
@@ -47,6 +47,15 @@ export default function App() {
       })
       .finally(() => setLoadingAuth(false));
   }, []);
+
+  // Presence: tell the server this user's client is open so admins can see who is online.
+  useEffect(() => {
+    if (!currentUser) return;
+    const beat = () => sendHeartbeat().catch(() => {});
+    beat();
+    const timer = setInterval(beat, 30000);
+    return () => clearInterval(timer);
+  }, [currentUser?.id]);
 
   const pathSegment = location.pathname.replace("/", "") || "dashboard";
   const activeNav: NavItem = [

@@ -369,6 +369,21 @@ export async function getActiveGameSessions() {
   return body as ListResponse<GameSession>;
 }
 
+export interface OnlinePlayer {
+  id: string;
+  username: string;
+  lastSeenAt: string;
+}
+
+export async function sendHeartbeat() {
+  await request("/api/presence/heartbeat", { method: "POST" });
+}
+
+export async function getOnlinePlayers() {
+  const body = await request("/api/presence/online", { method: "GET" });
+  return body as ListResponse<OnlinePlayer>;
+}
+
 export async function playGame(gameId: string) {
   const body = await request(`/api/games/${gameId}/play`, {
     method: "POST",

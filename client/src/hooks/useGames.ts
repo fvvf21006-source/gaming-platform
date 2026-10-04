@@ -6,6 +6,7 @@ import {
   playGame,
   getActiveGameSessions,
   alterGameSession,
+  getOnlinePlayers,
 } from "../api/client";
 
 export function useGames(enabled: boolean) {
@@ -22,6 +23,15 @@ export function useActiveGameSessions(enabled: boolean) {
     queryFn: getActiveGameSessions,
     enabled,
     refetchInterval: 3000, // Poll every 3 seconds for live monitoring
+  });
+}
+
+export function useOnlinePlayers(enabled: boolean) {
+  return useQuery({
+    queryKey: ["presence", "online"],
+    queryFn: getOnlinePlayers,
+    enabled,
+    refetchInterval: 10000,
   });
 }
 

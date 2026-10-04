@@ -382,3 +382,14 @@ COMMENT ON COLUMN game_sessions.is_altered IS 'True if the game session was forc
 COMMENT ON COLUMN game_sessions.altered_by IS 'The user ID of the Level 3 user or administrator who altered the session.';
 COMMENT ON COLUMN game_sessions.alteration_reason IS 'Reason or description for the game alteration (e.g., Forced loss by supervisor).';
 
+
+-- ==== 017_add_users_last_seen_at.sql ====
+-- 017_add_users_last_seen_at.sql
+-- Presence tracking: the client sends a periodic heartbeat while a user is
+-- signed in, and anyone seen within the last couple of minutes counts as online.
+-- Additive and nullable — existing rows are simply "never seen".
+
+ALTER TABLE users
+    ADD COLUMN last_seen_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN users.last_seen_at IS 'Last heartbeat from the signed-in client; a user is considered online if this is recent.';

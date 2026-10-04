@@ -8,6 +8,7 @@ import {
   useCompleteGameSession,
   useActiveGameSessions,
   useAlterGameSession,
+  useOnlinePlayers,
 } from "../hooks/useGames";
 import { useWallet } from "../hooks/useWallet";
 import { usePlayerActivityReport } from "../hooks/useReports";
@@ -34,6 +35,8 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
   const { data: activityReport, isLoading: loadingActivity, refetch: refetchActivity } = usePlayerActivityReport(true);
   const { data: usersData } = useUsers();
   const alterSession = useAlterGameSession();
+  const { data: onlineData } = useOnlinePlayers(true);
+  const onlineIds = useMemo(() => new Set((onlineData?.items ?? []).map((o) => o.id)), [onlineData]);
 
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
   const [reason, setReason] = useState("Intervening in active winning session — forced loss executed by Level 3 agent");
@@ -91,9 +94,10 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
         totalWon,
         netProfitLoss,
         sessions: pSessions,
+        isOnline: onlineIds.has(player.id),
       };
-    }).sort((a, b) => (b.liveSession ? 1 : 0) - (a.liveSession ? 1 : 0) || b.netProfitLoss - a.netProfitLoss);
-  }, [users, allSessions, activeSessionByUserId]);
+    }).sort((a, b) => (b.liveSession ? 1 : 0) - (a.liveSession ? 1 : 0) || (b.isOnline ? 1 : 0) - (a.isOnline ? 1 : 0) || b.netProfitLoss - a.netProfitLoss);
+  }, [users, allSessions, activeSessionByUserId, onlineIds]);
 
   const handleRefetch = () => {
     refetchActive();
@@ -164,6 +168,16 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
 
       {/* Metrics Strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        <div style={{ background: "var(--card)", border: "1px solid rgba(61,255,154,0.25)", borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Online Players</div>
+            <div className="font-mono-data" style={{ fontSize: 26, fontWeight: 800, color: onlineIds.size > 0 ? "var(--neon-green)" : "var(--muted-foreground)", marginTop: 4 }}>
+              {onlineIds.size} Online
+            </div>
+          </div>
+          <span style={{ fontSize: 28 }}>🟢</span>
+        </div>
+
         <div style={{ background: "var(--card)", border: "1px solid rgba(201,153,58,0.18)", borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Live Playing Now</div>
@@ -241,7 +255,11 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
                       <tr style={{ background: p.liveSession ? "rgba(0,212,255,0.04)" : undefined }}>
                         {/* Player */}
                         <td>
-                          <div style={{ fontWeight: 700, color: "var(--foreground)", fontSize: 14 }}>{p.player.username}</div>
+                          <div style={{ fontWeight: 700, color: "var(--foreground)", fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
+                            <span title={p.isOnline ? "Online now" : "Offline"} style={{ width: 8, height: 8, borderRadius: "50%", background: p.isOnline ? "var(--neon-green)" : "rgba(255,255,255,0.2)", boxShadow: p.isOnline ? "0 0 6px var(--neon-green)" : "none" }} />
+                            {p.player.username}
+                            {p.isOnline && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--neon-green)" }}>ONLINE</span>}
+                          </div>
                           <div className="font-mono-data" style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
                             ID: {p.player.id.slice(0, 8)}...
                           </div>

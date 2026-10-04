@@ -346,3 +346,39 @@ export async function isDescendant(ancestorId, targetUserId) {
   return result.rows[0].is_descendant;
 }
 
+
+/**
+ * Records that the user's client is currently open.
+ * @param {string} userId
+ */
+export async function touchLastSeen(userId) {
+  await pool.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [userId]);
+}
+
+/**
+ * Players seen within the last `withinSeconds` seconds. Scoped to the
+ * requester's descendants unless `isGlobal` (Super Admin). No role
+ * rules here — see presenceService.
+ * @param {{requesterId: string, isGlobal: boolean, withinSeconds: number}} input
+ */
+export async function findOnlinePlayers({ requesterId, isGlobal, withinSeconds }) {
+  const result = await pool.query(
+    `WITH RECURSIVE descendants AS (
+       SELECT id FROM users WHERE created_by = $1
+       UNION ALL
+       SELECT u.id FROM users u
+       JOIN descendants d ON u.created_by = d.id
+     )
+     SELECT u.id, u.username, u.last_seen_at
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     WHERE r.name = 'player'
+       AND u.status = 'active'
+       AND u.last_seen_at > now() - make_interval(secs => $3)
+       AND ($2::boolean OR u.id IN (SELECT id FROM descendants))
+     ORDER BY u.username ASC`,
+    [requesterId, isGlobal, withinSeconds]
+  );
+
+  return result.rows;
+}
