@@ -300,3 +300,28 @@ export async function updateUserStatus(id, status) {
 
   return findUserById(id);
 }
+
+/**
+ * True if any ancestor (the creator, the creator's creator, and so
+ * on up the chain) of the given user is frozen. The user's own
+ * status is not considered. No business rules here — see
+ * accountStatusService.
+ * @param {string} userId
+ */
+export async function hasFrozenAncestor(userId) {
+  const result = await pool.query(
+    `WITH RECURSIVE ancestors AS (
+       SELECT u.id, u.created_by, u.status
+       FROM users u
+       WHERE u.id = (SELECT created_by FROM users WHERE id = $1)
+       UNION
+       SELECT p.id, p.created_by, p.status
+       FROM users p
+       JOIN ancestors a ON p.id = a.created_by
+     )
+     SELECT EXISTS (SELECT 1 FROM ancestors WHERE status = 'frozen') AS has_frozen_ancestor`,
+    [userId]
+  );
+
+  return result.rows[0].has_frozen_ancestor;
+}

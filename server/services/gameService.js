@@ -7,6 +7,7 @@ import * as userRepository from '../repositories/userRepository.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
+import { isEffectivelyFrozen } from './accountStatusService.js';
 
 function toPublicGame(row) {
   return {
@@ -59,7 +60,7 @@ export async function playGame({ userId, gameId }) {
     throw notFound('Player not found');
   }
 
-  if (player.status === 'frozen') {
+  if (await isEffectivelyFrozen(player)) {
     throw forbidden('A frozen account cannot start a game session');
   }
 

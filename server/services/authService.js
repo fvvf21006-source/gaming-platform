@@ -9,6 +9,7 @@ import { createLogEntry } from '../repositories/auditRepository.js';
 import { logAction } from './auditService.js';
 import { createNotification } from './notificationService.js';
 import { badRequest } from '../utils/httpErrors.js';
+import { isEffectivelyFrozen } from './accountStatusService.js';
 
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid username or password';
 
@@ -76,7 +77,7 @@ export async function login(username, password) {
     throw unauthorized(INVALID_CREDENTIALS_MESSAGE);
   }
 
-  if (user.status === 'frozen') {
+  if (await isEffectivelyFrozen(user)) {
     await recordLoginAttempt({ actorId: user.id, success: false, reason: 'account_frozen' });
     throw forbidden('This account is frozen');
   }

@@ -7,6 +7,7 @@ import * as userRepository from '../repositories/userRepository.js';
 import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
+import { isEffectivelyFrozen } from './accountStatusService.js';
 
 function toPublicWallet(row) {
   return {
@@ -69,7 +70,7 @@ export async function transferPoints({ senderId, recipientId, amount }) {
     throw forbidden('Players cannot transfer points');
   }
 
-  if (sender.status === 'frozen') {
+  if (await isEffectivelyFrozen(sender)) {
     throw forbidden('A frozen account cannot transfer points');
   }
 
@@ -83,7 +84,7 @@ export async function transferPoints({ senderId, recipientId, amount }) {
     throw notFound('Recipient not found');
   }
 
-  if (recipient.status === 'frozen') {
+  if (await isEffectivelyFrozen(recipient)) {
     throw forbidden('Cannot transfer points to a frozen account');
   }
 
