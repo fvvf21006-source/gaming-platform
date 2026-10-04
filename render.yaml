@@ -9,6 +9,8 @@ services:
     name: gaming-platform-api
     runtime: node
     rootDir: server
+    # The free plan sleeps after 15 min idle and has a fraction of a CPU, so it cannot give a
+    # lag-free experience to ~1000 concurrent users. Use `starter` or higher for that load.
     plan: free
     buildCommand: npm ci
     # setup-db is idempotent: applies pending migrations, seeds once, and creates the
@@ -24,6 +26,10 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1h
+      - key: DB_POOL_MAX
+        value: "20" # max Postgres connections per API instance (use Neon's pooled connection string)
+      - key: UV_THREADPOOL_SIZE
+        value: "8" # more threads for bcrypt, so bursts of logins don't queue behind each other
       - key: CLIENT_URL
         sync: false # the client's public URL, e.g. https://gaming-platform-client.onrender.com (no trailing slash)
       - key: SUPER_ADMIN_USERNAME
@@ -39,6 +45,14 @@ services:
     rootDir: client
     buildCommand: npm ci --include=dev && npm run build
     staticPublishPath: dist
+    headers:
+      # Hashed build assets never change, so browsers/CDN can cache them for a year
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
     envVars:
       - key: VITE_API_BASE_URL
         sync: false # the API's public URL, e.g. https://gaming-platform-api.onrender.com (no trailing slash)

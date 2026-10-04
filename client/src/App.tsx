@@ -1,19 +1,23 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import LoginScreen from "./components/LoginScreen";
 import Sidebar, { type NavItem } from "./components/Sidebar";
 import Topbar from "./components/Topbar";
-import DashboardHome from "./components/DashboardHome";
-import UserManagement from "./components/UserManagement";
-import WalletPanel from "./components/WalletPanel";
-import GameAccess from "./components/GameAccess";
-import Reports from "./components/Reports";
-import AuditLogs from "./components/AuditLogs";
-import UserProfile from "./components/UserProfile";
+const DashboardHome = lazy(() => import("./components/DashboardHome"));
+const UserManagement = lazy(() => import("./components/UserManagement"));
+const WalletPanel = lazy(() => import("./components/WalletPanel"));
+const GameAccess = lazy(() => import("./components/GameAccess"));
+const Reports = lazy(() => import("./components/Reports"));
+const AuditLogs = lazy(() => import("./components/AuditLogs"));
+const UserProfile = lazy(() => import("./components/UserProfile"));
 import ForcedPasswordChange from "./components/ForcedPasswordChange";
-import PlayerApp from "./components/player/PlayerApp";
+const PlayerApp = lazy(() => import("./components/player/PlayerApp"));
 import { clearToken, fetchMe, getToken, sendHeartbeat, type AuthUser } from "./api/client";
 import { can, type Permission } from "./utils/permissions";
+
+function PageFallback() {
+  return <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted-foreground)", fontFamily: "Outfit, sans-serif" }}>Loading…</div>;
+}
 
 const ROUTE_PERMISSIONS: Record<string, Permission> = {
   users: "users.view",
@@ -97,6 +101,7 @@ export default function App() {
   // Players get their own arcade-style experience instead of the admin dashboard shell.
   if (currentUser.role === "player") {
     return (
+      <Suspense fallback={<PageFallback />}>
       <PlayerApp
         user={currentUser}
         onUserUpdated={setCurrentUser}
@@ -106,6 +111,7 @@ export default function App() {
           navigate("/login");
         }}
       />
+      </Suspense>
     );
   }
 
@@ -145,6 +151,7 @@ export default function App() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, height: "100vh" }}>
         <Topbar active={activeNav} onMobileToggleMenu={() => setMobileOpen(true)} />
         <main style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+          <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardHome currentUser={currentUser} />} />
@@ -170,6 +177,7 @@ export default function App() {
               }
             />
           </Routes>
+          </Suspense>
         </main>
       </div>
     </div>

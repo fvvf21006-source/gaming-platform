@@ -8,8 +8,15 @@ import env from '../config/env.js';
 
 const { Pool } = pg;
 
+// Pool sizing: keep this at or below the database's connection limit divided by
+// the number of API instances (Neon's pooled endpoint tolerates far more clients).
 export const pool = new Pool({
   connectionString: env.databaseUrl,
+  max: Number(process.env.DB_POOL_MAX) || 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000, // fail fast instead of hanging when the pool is exhausted
+  statement_timeout: 15000, // a runaway query cannot hold a connection forever
+  keepAlive: true,
 });
 
 pool.on('error', (err) => {

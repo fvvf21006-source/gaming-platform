@@ -22,7 +22,7 @@ export function useActiveGameSessions(enabled: boolean) {
     queryKey: ["games", "active-sessions"],
     queryFn: getActiveGameSessions,
     enabled,
-    refetchInterval: 3000, // Poll every 3 seconds for live monitoring
+    refetchInterval: 5000, // live monitoring; react-query pauses this while the tab is hidden
   });
 }
 

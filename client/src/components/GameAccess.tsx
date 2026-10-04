@@ -154,7 +154,7 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
           className="pl-btn ghost"
           style={{ padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
         >
-          <span>🔄</span> Live Polling (3s)
+          <span>🔄</span> Live Polling (5s)
         </button>
       </div>
 
