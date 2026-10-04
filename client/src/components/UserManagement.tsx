@@ -82,7 +82,14 @@ export default function UserManagement({ currentUser }: Props) {
   };
 
   // Freezing and password resets are disruptive, so they ask first; re-activating does not.
-  const requestToggle = (u: User) => (u.status === "active" ? setConfirm({ kind: "freeze", user: u }) : runStatusChange(u, "active"));
+  // A blocked account is released by re-activating the frozen ancestor that blocks it.
+  const requestToggle = (u: UserView) => {
+    if (u.blockedById) {
+      const blocker = allUsers.find((a) => a.id === u.blockedById);
+      if (blocker) return runStatusChange(blocker, "active");
+    }
+    return u.status === "active" ? setConfirm({ kind: "freeze", user: u }) : runStatusChange(u, "active");
+  };
   const requestReset = (u: User) => setConfirm({ kind: "reset", user: u });
 
   const handleConfirm = () => {
@@ -266,14 +273,14 @@ function Chip({ children, active, color, onClick }: { children: ReactNode; activ
 }
 
 // A frozen account blocks everyone beneath it; blockedBy names the nearest frozen ancestor.
-type UserView = User & { blockedBy?: string };
+type UserView = User & { blockedBy?: string; blockedById?: string };
 
 function withBlockedBy(users: User[]): UserView[] {
   const byId = new Map(users.map((u) => [u.id, u]));
   return users.map((u) => {
     let parent = u.createdBy ? byId.get(u.createdBy) : undefined;
     while (parent) {
-      if (parent.status === "frozen") return { ...u, blockedBy: parent.username };
+      if (parent.status === "frozen") return { ...u, blockedBy: parent.username, blockedById: parent.id };
       parent = parent.createdBy ? byId.get(parent.createdBy) : undefined;
     }
     return u;
@@ -304,11 +311,11 @@ function StatusPill({ status, blockedBy }: { status: User["status"]; blockedBy?:
   );
 }
 
-function RowActions({ user, onToggle, onReset }: { user: User; onToggle: (u: User) => void; onReset: (u: User) => void }) {
-  const on = user.status === "active";
+function RowActions({ user, onToggle, onReset }: { user: UserView; onToggle: (u: UserView) => void; onReset: (u: User) => void }) {
+  const on = user.status === "active" && !user.blockedBy;
   return (
     <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
-      <button className="um-mini" onClick={() => onToggle(user)} style={{ color: on ? "var(--neon-pink)" : "var(--neon-green)" }} title={on ? "Freeze this account" : "Activate this account"}>
+      <button className="um-mini" onClick={() => onToggle(user)} style={{ color: on ? "var(--neon-pink)" : "var(--neon-green)" }} title={on ? "Freeze this account" : user.blockedBy ? `Activate ${user.blockedBy} to unblock this account` : "Activate this account"}>
         {on ? "❄ Freeze" : "▶ Activate"}
       </button>
       <button className="um-mini" onClick={() => onReset(user)} style={{ color: "var(--neon-cyan)" }} title="Generate a temporary password">🔑 Reset</button>
@@ -318,7 +325,7 @@ function RowActions({ user, onToggle, onReset }: { user: User; onToggle: (u: Use
 
 interface RowHandlers {
   onSelect: (u: User) => void;
-  onToggle: (u: User) => void;
+  onToggle: (u: UserView) => void;
   onReset: (u: User) => void;
 }
 
@@ -518,7 +525,7 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 22 }}>
                 <button className="um-ghost" onClick={() => setEditing(true)}>✎ Edit profile</button>
                 <button className="um-ghost" style={{ color: "var(--neon-cyan)" }} onClick={() => onReset(user)}>🔑 Reset password</button>
-                {user.status === "active"
+                {user.status === "active" && !user.blockedBy
                   ? <button className="um-danger" style={{ justifyContent: "center" }} onClick={() => onToggle(user)}>❄ Freeze account</button>
                   : <button className="um-primary" style={{ justifyContent: "center" }} onClick={() => onToggle(user)}>▶ Activate account</button>}
               </div>
