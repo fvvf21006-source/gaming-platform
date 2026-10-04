@@ -20,6 +20,18 @@ export const completeSessionValidationRules = [
     .withMessage('score must be a non-negative integer'),
 ];
 
+export const alterSessionValidationRules = [
+  body('score')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('score must be a non-negative integer'),
+  body('reason')
+    .optional()
+    .isString()
+    .withMessage('reason must be a string'),
+];
+
+
 export function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
 

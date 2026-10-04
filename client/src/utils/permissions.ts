@@ -8,6 +8,7 @@ export type Permission =
   | "wallet.transfer"
   | "wallet.adjust"
   | "game.play"
+  | "game.alter"
   | "reports.view"
   | "reports.loginReport"
   | "audit.view";
@@ -22,15 +23,17 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "wallet.view",
     "wallet.transfer",
     "wallet.adjust",
+    "game.alter",
     "reports.view",
     "reports.loginReport",
     "audit.view",
   ],
-  level_1: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],
-  level_2: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],
-  level_3: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],
+  level_1: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
+  level_2: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
+  level_3: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "game.alter", "reports.view"],
   player: ["wallet.view", "game.play"],
 };
+
 
 export function can(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;

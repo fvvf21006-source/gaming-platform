@@ -23,6 +23,7 @@ function toPublicSession(row) {
   return {
     id: row.id,
     userId: row.user_id,
+    playerUsername: row.player_username,
     gameId: row.game_id,
     gameName: row.game_name,
     pointsSpent: row.points_spent,
@@ -30,6 +31,9 @@ function toPublicSession(row) {
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
+    isAltered: Boolean(row.is_altered),
+    alteredBy: row.altered_by,
+    alterationReason: row.alteration_reason,
   };
 }
 
@@ -94,7 +98,7 @@ export async function playGame({ userId, gameId }) {
   });
 
   return {
-    ...toPublicSession({ ...result.session, game_name: game.name }),
+    ...toPublicSession({ ...result.session, game_name: game.name, player_username: player.username }),
     remainingBalance: result.walletBalance,
   };
 }
@@ -116,6 +120,13 @@ export async function completeSession({ userId, sessionId, score }) {
     throw forbidden('This is not your session');
   }
 
+  // If session was forcibly altered while in progress (e.g. by Level 3 agent),
+  // return the forced loss session gracefully to the player.
+  if (session.is_altered) {
+    const game = await gameRepository.findGameById(session.game_id);
+    return toPublicSession({ ...session, game_name: game?.name });
+  }
+
   if (session.status !== 'in_progress') {
     throw conflict('Session is not in progress');
   }
@@ -123,8 +134,12 @@ export async function completeSession({ userId, sessionId, score }) {
   const updated = await gameRepository.completeSession(sessionId, score);
 
   if (!updated) {
-    // Race condition: the session was completed/abandoned by another
-    // request between the check above and this update.
+    // Race condition: session was altered or completed right before update
+    const freshSession = await gameRepository.findSessionById(sessionId);
+    if (freshSession?.is_altered) {
+      const game = await gameRepository.findGameById(freshSession.game_id);
+      return toPublicSession({ ...freshSession, game_name: game?.name });
+    }
     throw conflict('Session is not in progress');
   }
 
@@ -144,7 +159,7 @@ export async function completeSession({ userId, sessionId, score }) {
     metadata: { score },
   });
 
-  return toPublicSession(updated);
+  return toPublicSession({ ...updated, game_name: game?.name });
 }
 
 /**
@@ -157,4 +172,84 @@ export async function getHistory(userId) {
   const items = rows.map(toPublicSession);
 
   return { items, total: items.length };
+}
+
+/**
+ * Returns all active (in_progress) game sessions for descendant players under requester.
+ * @param {string} requesterId
+ * @param {string} requesterRole
+ */
+export async function getActiveSessions(requesterId, requesterRole) {
+  const ALLOWED_ROLES = ['super_admin', 'level_1', 'level_2', 'level_3'];
+  if (!ALLOWED_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can view active game sessions');
+  }
+
+  const rows = await gameRepository.findActiveSessionsForAncestors(requesterId, requesterRole);
+  const items = rows.map(toPublicSession);
+
+  return { items, total: items.length };
+}
+
+/**
+ * Forcibly alters an active game session (e.g. Level 3 forces player to lose).
+ * @param {{requesterId: string, requesterRole: string, sessionId: string, score?: number, reason?: string}} input
+ */
+export async function alterSession({ requesterId, requesterRole, sessionId, score = 0, reason }) {
+  const ALLOWED_ROLES = ['super_admin', 'level_1', 'level_2', 'level_3'];
+  if (!ALLOWED_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can alter game sessions');
+  }
+
+  const session = await gameRepository.findSessionById(sessionId);
+
+  if (!session) {
+    throw notFound('Session not found');
+  }
+
+  if (session.status !== 'in_progress') {
+    throw conflict('Session is no longer in progress');
+  }
+
+  if (requesterRole !== 'super_admin') {
+    const isDescendant = await userRepository.isDescendant(requesterId, session.user_id);
+    if (!isDescendant) {
+      throw forbidden('Player is outside your hierarchy');
+    }
+  }
+
+  const defaultReason = reason || 'Game outcome altered by Level 3 supervisor (Forced loss)';
+  const altered = await gameRepository.alterGameSession({
+    sessionId,
+    alteredBy: requesterId,
+    score,
+    reason: defaultReason,
+  });
+
+  if (!altered) {
+    throw conflict('Session is no longer in progress');
+  }
+
+  const game = await gameRepository.findGameById(session.game_id);
+
+  await createNotification({
+    userId: session.user_id,
+    type: 'game_altered',
+    message: `Your active game session for "${game?.name ?? 'the game'}" was altered by your level 3 supervisor (Outcome: Forced Loss, Score: ${score}).`,
+  });
+
+  await logAction({
+    actorId: requesterId,
+    action: 'game_altered',
+    entityType: 'game_session',
+    entityId: sessionId,
+    metadata: {
+      targetPlayerId: session.user_id,
+      gameName: game?.name,
+      forcedScore: score,
+      reason: defaultReason,
+    },
+  });
+
+  return toPublicSession({ ...altered, game_name: game?.name });
 }

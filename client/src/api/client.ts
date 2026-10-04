@@ -135,6 +135,7 @@ export interface Game {
 export interface GameSession {
   id: string;
   userId: string;
+  playerUsername?: string;
   gameId: string;
   gameName?: string;
   pointsSpent: number;
@@ -143,7 +144,11 @@ export interface GameSession {
   startedAt: string;
   completedAt: string | null;
   remainingBalance?: string;
+  isAltered?: boolean;
+  alteredBy?: string | null;
+  alterationReason?: string | null;
 }
+
 
 export interface Notification {
   id: string;
@@ -356,6 +361,11 @@ export async function listGames() {
   return body as ListResponse<Game>;
 }
 
+export async function getActiveGameSessions() {
+  const body = await request("/api/games/active-sessions", { method: "GET" });
+  return body as ListResponse<GameSession>;
+}
+
 export async function playGame(gameId: string) {
   const body = await request(`/api/games/${gameId}/play`, {
     method: "POST",
@@ -371,10 +381,19 @@ export async function completeGameSession(sessionId: string, score: number) {
   return body.session as GameSession;
 }
 
+export async function alterGameSession(sessionId: string, score: number = 0, reason?: string) {
+  const body = await request(`/api/games/sessions/${sessionId}/alter`, {
+    method: "POST",
+    body: JSON.stringify({ score, reason }),
+  });
+  return body.session as GameSession;
+}
+
 export async function getGameHistory() {
   const body = await request("/api/games/history", { method: "GET" });
   return body as ListResponse<GameSession>;
 }
+
 
 // ── NOTIFICATION API ──
 

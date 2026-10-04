@@ -103,7 +103,7 @@ export async function startGameSession({ userId, gameId, pointCost }) {
  */
 export async function findSessionById(id) {
   const result = await pool.query(
-    `SELECT id, user_id, game_id, points_spent, score, status, started_at, completed_at
+    `SELECT id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason
      FROM game_sessions
      WHERE id = $1`,
     [id]
@@ -127,7 +127,7 @@ export async function completeSession(id, score) {
     `UPDATE game_sessions
      SET status = 'completed', score = $1, completed_at = now()
      WHERE id = $2 AND status = 'in_progress'
-     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at`,
+     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
     [score, id]
   );
 
@@ -150,7 +150,10 @@ export async function findSessionsByUserId(userId) {
        s.score,
        s.status,
        s.started_at,
-       s.completed_at
+       s.completed_at,
+       s.is_altered,
+       s.altered_by,
+       s.alteration_reason
      FROM game_sessions s
      JOIN games g ON g.id = s.game_id
      WHERE s.user_id = $1
@@ -160,3 +163,64 @@ export async function findSessionsByUserId(userId) {
 
   return result.rows;
 }
+
+/**
+ * Returns all active (in_progress) game sessions for players in the requester's hierarchy.
+ * @param {string} requesterId
+ * @param {string} requesterRole
+ */
+export async function findActiveSessionsForAncestors(requesterId, requesterRole) {
+  const result = await pool.query(
+    `WITH RECURSIVE descendants AS (
+       SELECT id FROM users WHERE created_by = $1
+       UNION ALL
+       SELECT u.id FROM users u
+       JOIN descendants d ON u.created_by = d.id
+     )
+     SELECT
+       s.id,
+       s.user_id,
+       u.username AS player_username,
+       s.game_id,
+       g.name AS game_name,
+       s.points_spent,
+       s.score,
+       s.status,
+       s.started_at,
+       s.completed_at,
+       s.is_altered,
+       s.altered_by,
+       s.alteration_reason
+     FROM game_sessions s
+     JOIN users u ON u.id = s.user_id
+     JOIN games g ON g.id = s.game_id
+     WHERE s.status = 'in_progress'
+       AND ($2 = 'super_admin' OR s.user_id IN (SELECT id FROM descendants))
+     ORDER BY s.started_at DESC`,
+    [requesterId, requesterRole]
+  );
+
+  return result.rows;
+}
+
+/**
+ * Forcibly alters an in_progress session (e.g. setting score to 0 / forced loss).
+ * @param {{sessionId: string, alteredBy: string, score?: number, reason?: string}} input
+ */
+export async function alterGameSession({ sessionId, alteredBy, score = 0, reason }) {
+  const result = await pool.query(
+    `UPDATE game_sessions
+     SET status = 'completed',
+         score = $1,
+         is_altered = true,
+         altered_by = $2,
+         alteration_reason = $3,
+         completed_at = now()
+     WHERE id = $4 AND status = 'in_progress'
+     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
+    [score, alteredBy, reason || 'Altered by Level 3 agent', sessionId]
+  );
+
+  return result.rows[0] || null;
+}
+

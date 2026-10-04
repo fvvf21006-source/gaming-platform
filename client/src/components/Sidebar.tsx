@@ -40,7 +40,7 @@ const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
   { label: "Manage", items: [
     { id: "users", label: "Users", icon: ICONS.users, permission: "users.view" },
     { id: "wallet", label: "Wallet", icon: ICONS.wallet, permission: "wallet.view" },
-    { id: "game", label: "Game Access", icon: ICONS.game, permission: "game.play" },
+    { id: "game", label: "Game Control", icon: ICONS.game },
   ] },
   { label: "Insights", items: [
     { id: "reports", label: "Reports", icon: ICONS.reports, permission: "reports.view" },
@@ -65,8 +65,17 @@ export default function Sidebar({
   role, name, userId, active, collapsed, mobileOpen = false, onNav, onLogout, onToggle, onMobileClose,
 }: Props) {
   const visibleGroups = NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((n) => !n.permission || can(role, n.permission)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter(
+        (n) =>
+          !n.permission ||
+          can(role, n.permission) ||
+          (n.id === "game" && (can(role, "game.play") || can(role, "game.alter")))
+      ),
+    }))
     .filter((g) => g.items.length > 0);
+
   const roleColor = ROLE_COLORS[role];
   const currentTierIndex = ROLE_ORDER.indexOf(role);
 

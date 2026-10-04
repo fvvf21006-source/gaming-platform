@@ -6,18 +6,24 @@ import {
   gameIdParamValidationRules,
   sessionIdParamValidationRules,
   completeSessionValidationRules,
+  alterSessionValidationRules,
   handleValidationErrors,
 } from '../validators/gameValidator.js';
 
 const router = Router();
 
-// Every route in this module is Player-only, per 04_API_SPEC.md —
-// unlike users/wallet, there is no "everyone but Player" case here.
+// List games catalog (Player)
 router.get('/', authenticate, authorize(['player']), gameController.list);
 
+// Active live game sessions for descendant players (Level 3 & admins)
+router.get(
+  '/active-sessions',
+  authenticate,
+  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  gameController.getActiveSessions
+);
+
 // Registered before /:id/play so a literal path segment always wins
-// over the dynamic one, though the differing segment counts already
-// prevent any real collision between the two.
 router.get('/history', authenticate, authorize(['player']), gameController.history);
 
 router.post(
@@ -39,4 +45,16 @@ router.post(
   gameController.complete
 );
 
+// Alter active game session (Level 3 & admins: force lose / alter game)
+router.post(
+  '/sessions/:sessionId/alter',
+  authenticate,
+  authorize(['super_admin', 'level_1', 'level_2', 'level_3']),
+  sessionIdParamValidationRules,
+  alterSessionValidationRules,
+  handleValidationErrors,
+  gameController.alter
+);
+
 export default router;
+

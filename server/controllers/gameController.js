@@ -49,3 +49,30 @@ export async function history(req, res, next) {
     next(err);
   }
 }
+
+export async function getActiveSessions(req, res, next) {
+  try {
+    const result = await gameService.getActiveSessions(req.user.userId, req.user.role);
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function alter(req, res, next) {
+  try {
+    const session = await gameService.alterSession({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      sessionId: req.params.sessionId,
+      score: req.body.score ?? 0,
+      reason: req.body.reason,
+    });
+
+    res.status(200).json({ session });
+  } catch (err) {
+    next(err);
+  }
+}
+

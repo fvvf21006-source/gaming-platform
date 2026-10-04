@@ -325,3 +325,24 @@ export async function hasFrozenAncestor(userId) {
 
   return result.rows[0].has_frozen_ancestor;
 }
+
+/**
+ * True if targetUserId is a descendant of ancestorId (i.e. ancestorId is in targetUserId's created_by chain).
+ * @param {string} ancestorId
+ * @param {string} targetUserId
+ */
+export async function isDescendant(ancestorId, targetUserId) {
+  const result = await pool.query(
+    `WITH RECURSIVE ancestors AS (
+       SELECT id, created_by FROM users WHERE id = $2
+       UNION ALL
+       SELECT u.id, u.created_by FROM users u
+       JOIN ancestors a ON u.id = a.created_by
+     )
+     SELECT EXISTS (SELECT 1 FROM ancestors WHERE created_by = $1) AS is_descendant`,
+    [ancestorId, targetUserId]
+  );
+
+  return result.rows[0].is_descendant;
+}
+
