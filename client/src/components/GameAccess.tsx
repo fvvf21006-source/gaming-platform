@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { AuthUser, Game, GameSession } from "../api/client";
 import { formatPoints } from "../utils/points";
 import {
@@ -10,6 +10,8 @@ import {
   useAlterGameSession,
 } from "../hooks/useGames";
 import { useWallet } from "../hooks/useWallet";
+import { usePlayerActivityReport } from "../hooks/useReports";
+import { useUsers } from "../hooks/useUsers";
 import ReflexGame from "./game/ReflexGame";
 
 interface Props {
@@ -26,17 +28,77 @@ export default function GameAccess({ currentUser }: Props) {
   return <AdminGameAlterationPanel currentUser={currentUser} />;
 }
 
-// ── ADMIN / LEVEL 3 GAME ALTERATION PANEL ──
+// ── ADMIN / LEVEL 3 GAME ALTERATION & PLAYER ANALYTICS PANEL ──
 function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
-  const { data: activeData, isLoading, refetch } = useActiveGameSessions(true);
+  const { data: activeData, isLoading: loadingActive, refetch: refetchActive } = useActiveGameSessions(true);
+  const { data: activityReport, isLoading: loadingActivity, refetch: refetchActivity } = usePlayerActivityReport(true);
+  const { data: usersData } = useUsers();
   const alterSession = useAlterGameSession();
 
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
-  const [reason, setReason] = useState("Intervening in active session — forced loss requested by Level 3 agent");
+  const [reason, setReason] = useState("Intervening in active winning session — forced loss executed by Level 3 agent");
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   const activeSessions = activeData?.items ?? [];
+  const allSessions = activityReport?.items ?? [];
+  const users = usersData?.items ?? [];
+
+  // Map of active session by userId
+  const activeSessionByUserId = useMemo(() => {
+    const map = new Map<string, GameSession>();
+    for (const s of activeSessions) {
+      map.set(s.userId, s);
+    }
+    return map;
+  }, [activeSessions]);
+
+  // Aggregate stats per player (Wins, Losses, Win Rate, Total Spent, Total Won, Net Profit/Loss)
+  const playerStatsList = useMemo(() => {
+    // Filter descendant players
+    const playerUsers = users.filter((u) => u.role === "player");
+
+    // Group sessions by userId
+    const sessionsByPlayer = new Map<string, typeof allSessions>();
+    for (const s of allSessions) {
+      const list = sessionsByPlayer.get(s.userId) ?? [];
+      list.push(s);
+      sessionsByPlayer.set(s.userId, list);
+    }
+
+    return playerUsers.map((player) => {
+      const pSessions = sessionsByPlayer.get(player.id) ?? [];
+      const liveSession = activeSessionByUserId.get(player.id);
+
+      const totalPlayed = pSessions.length;
+      const wins = pSessions.filter((s) => s.status === "completed" && (s.score ?? 0) > 0 && !s.isAltered).length;
+      const losses = pSessions.filter((s) => (s.status === "completed" && (s.score === 0 || s.isAltered)) || s.status === "abandoned").length;
+      const winRate = totalPlayed > 0 ? ((wins / totalPlayed) * 100).toFixed(1) : "0.0";
+
+      const totalSpent = pSessions.reduce((sum, s) => sum + Number(s.pointsSpent), 0);
+      const totalWon = pSessions.reduce((sum, s) => sum + Number(s.score ?? 0), 0);
+      const netProfitLoss = totalWon - totalSpent; // Net points win (+) or lose (-)
+
+      return {
+        player,
+        liveSession,
+        totalPlayed,
+        wins,
+        losses,
+        winRate: Number(winRate),
+        totalSpent,
+        totalWon,
+        netProfitLoss,
+        sessions: pSessions,
+      };
+    }).sort((a, b) => (b.liveSession ? 1 : 0) - (a.liveSession ? 1 : 0) || b.netProfitLoss - a.netProfitLoss);
+  }, [users, allSessions, activeSessionByUserId]);
+
+  const handleRefetch = () => {
+    refetchActive();
+    refetchActivity();
+  };
 
   const handleOpenAlterModal = (session: GameSession) => {
     setSelectedSession(session);
@@ -52,9 +114,9 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
       { sessionId: selectedSession.id, score: 0, reason },
       {
         onSuccess: () => {
-          setSuccessMessage(`Game session for player "${selectedSession.playerUsername ?? selectedSession.userId.slice(0, 6)}" was successfully altered to a Forced Loss (Score: 0).`);
+          setSuccessMessage(`Game session for player "${selectedSession.playerUsername ?? selectedSession.userId.slice(0, 6)}" was forcibly altered to a Loss (Score: 0).`);
           setSelectedSession(null);
-          refetch();
+          handleRefetch();
         },
         onError: (err: Error) => {
           setErrorMessage(err.message || "Failed to alter game session");
@@ -63,25 +125,28 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
     );
   };
 
+  const totalActiveCount = activeSessions.length;
+  const totalNetWinLossAcrossPlayers = playerStatsList.reduce((sum, p) => sum + p.netProfitLoss, 0);
+
   return (
-    <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
+    <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22, fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <h1 className="font-cinzel" style={{ fontSize: 22, fontWeight: 700, color: "var(--gold)", margin: 0 }}>
-              Live Game Control & Intervention
+              Live Game Control & Player Analytics
             </h1>
             <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: "rgba(255,45,120,0.15)", color: "var(--neon-pink)", border: "1px solid rgba(255,45,120,0.3)" }}>
-              {currentUser.role.toUpperCase()} AUTHORIZED
+              {currentUser.role.toUpperCase()} CONTROL HUB
             </span>
           </div>
           <p style={{ fontSize: 13, color: "var(--muted-foreground)", margin: "4px 0 0" }}>
-            Monitor active player game sessions in real-time. If a player is winning and you wish to alter the game, execute a forced loss below.
+            Monitor player live games, track win/loss rates, total money won or lost, and alter active winning games in real-time.
           </p>
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={handleRefetch}
           className="pl-btn ghost"
           style={{ padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
         >
@@ -89,7 +154,7 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
         </button>
       </div>
 
-      {/* Success banner */}
+      {/* Success Banner */}
       {successMessage && (
         <div style={{ background: "rgba(61,255,154,0.1)", border: "1px solid rgba(61,255,154,0.3)", borderRadius: 10, padding: "14px 18px", color: "var(--neon-green)", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>✅ {successMessage}</span>
@@ -97,102 +162,249 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
         </div>
       )}
 
-      {/* Summary metric card */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+      {/* Metrics Strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
         <div style={{ background: "var(--card)", border: "1px solid rgba(201,153,58,0.18)", borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active Live Sessions</div>
-            <div className="font-mono-data" style={{ fontSize: 26, fontWeight: 800, color: "var(--neon-cyan)", marginTop: 4 }}>{activeSessions.length}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Live Playing Now</div>
+            <div className="font-mono-data" style={{ fontSize: 26, fontWeight: 800, color: totalActiveCount > 0 ? "var(--neon-cyan)" : "var(--muted-foreground)", marginTop: 4 }}>
+              {totalActiveCount} {totalActiveCount === 1 ? "Session" : "Sessions"}
+            </div>
           </div>
           <span style={{ fontSize: 28 }}>⚡</span>
         </div>
-        <div style={{ background: "var(--card)", border: "1px solid rgba(255,45,120,0.2)", borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+
+        <div style={{ background: "var(--card)", border: "1px solid rgba(201,153,58,0.18)", borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Intervention Status</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--neon-pink)", marginTop: 6 }}>Ready to Alter</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Managed Players</div>
+            <div className="font-mono-data" style={{ fontSize: 26, fontWeight: 800, color: "var(--gold)", marginTop: 4 }}>
+              {playerStatsList.length} Players
+            </div>
           </div>
-          <span style={{ fontSize: 28 }}>🛑</span>
+          <span style={{ fontSize: 28 }}>👤</span>
+        </div>
+
+        <div style={{ background: "var(--card)", border: `1px solid ${totalNetWinLossAcrossPlayers >= 0 ? "rgba(61,255,154,0.25)" : "rgba(255,45,120,0.25)"}`, borderRadius: 12, padding: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Net Player Win/Loss</div>
+            <div className="font-mono-data" style={{ fontSize: 24, fontWeight: 800, color: totalNetWinLossAcrossPlayers >= 0 ? "var(--neon-green)" : "var(--neon-pink)", marginTop: 4 }}>
+              {totalNetWinLossAcrossPlayers >= 0 ? `+${formatPoints(totalNetWinLossAcrossPlayers)} Net Profit` : `-${formatPoints(Math.abs(totalNetWinLossAcrossPlayers))} Net Loss`}
+            </div>
+          </div>
+          <span style={{ fontSize: 28 }}>{totalNetWinLossAcrossPlayers >= 0 ? "📈" : "📉"}</span>
         </div>
       </div>
 
-      {/* Active Sessions List */}
+      {/* Main Player Table & Control Hub */}
       <div style={{ background: "var(--card)", border: "1px solid rgba(201,153,58,0.15)", borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(201,153,58,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ color: "var(--gold)" }}>🎮</span>
             <span className="font-cinzel" style={{ fontSize: 14, fontWeight: 700, color: "var(--foreground)", letterSpacing: "0.05em" }}>
-              Active Player Gameplay Sessions
+              Player Live Games & Win/Loss Analytics
             </span>
           </div>
-          <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Auto-refreshing active gameplay</span>
+          <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Live auto-syncing</span>
         </div>
 
-        {isLoading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--muted-foreground)", fontSize: 13 }}>Fetching active player sessions...</div>
-        ) : activeSessions.length === 0 ? (
+        {loadingActive || loadingActivity ? (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--muted-foreground)", fontSize: 13 }}>Loading player analytics and live session status...</div>
+        ) : playerStatsList.length === 0 ? (
           <div style={{ padding: 50, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 36 }}>🎯</span>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>No Players Currently Playing</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)" }}>No Players Found</div>
             <div style={{ fontSize: 13, color: "var(--muted-foreground)", maxWidth: 400 }}>
-              There are currently no active game sessions among your descendant players. When a player starts a game, it will appear live here.
+              You currently have no descendant players. Once players join under your hierarchy, their live games and win/loss analytics will appear here.
             </div>
           </div>
         ) : (
-          <table className="casino-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>Player</th>
-                <th style={{ textAlign: "left" }}>Game</th>
-                <th style={{ textAlign: "right" }}>Buy-In Cost</th>
-                <th style={{ textAlign: "center" }}>Status</th>
-                <th style={{ textAlign: "left" }}>Started At</th>
-                <th style={{ textAlign: "center" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeSessions.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <div style={{ fontWeight: 700, color: "var(--foreground)" }}>{s.playerUsername ?? "Player"}</div>
-                    <div className="font-mono-data" style={{ fontSize: 11, color: "var(--muted-foreground)" }}>ID: {s.userId.slice(0, 8)}...</div>
-                  </td>
-                  <td>
-                    <span className="font-cinzel" style={{ fontWeight: 700, color: "var(--gold)" }}>{s.gameName ?? "Arcade Game"}</span>
-                  </td>
-                  <td className="font-mono-data" style={{ textAlign: "right", color: "var(--gold)", fontWeight: 700 }}>
-                    {s.pointsSpent} pts
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--neon-cyan)", background: "rgba(0,212,255,0.12)", border: "1px solid rgba(0,212,255,0.3)", borderRadius: 6, padding: "3px 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      ● IN PROGRESS (ACTIVE)
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted-foreground)" }}>
-                    {new Date(s.startedAt).toLocaleTimeString()}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <button
-                      onClick={() => handleOpenAlterModal(s)}
-                      style={{
-                        background: "linear-gradient(135deg, #FF2D78, #D81159)",
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "8px 14px",
-                        color: "#FFF",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        fontFamily: "Outfit, sans-serif",
-                        cursor: "pointer",
-                        boxShadow: "0 2px 8px rgba(255,45,120,0.3)",
-                      }}
-                    >
-                      ⚡ Force Lose (Alter Game)
-                    </button>
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table className="casino-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Player</th>
+                  <th style={{ textAlign: "left" }}>Live Gameplay</th>
+                  <th style={{ textAlign: "center" }}>Wins / Losses</th>
+                  <th style={{ textAlign: "center" }}>Win Rate</th>
+                  <th style={{ textAlign: "right" }}>Total Spent (Bet)</th>
+                  <th style={{ textAlign: "right" }}>Total Won</th>
+                  <th style={{ textAlign: "right" }}>Net Win / Loss</th>
+                  <th style={{ textAlign: "center" }}>Alter / Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {playerStatsList.map((p) => {
+                  const isExpanded = expandedUserId === p.player.id;
+                  const isWinning = p.netProfitLoss > 0;
+                  return (
+                    <React.Fragment key={p.player.id}>
+                      <tr style={{ background: p.liveSession ? "rgba(0,212,255,0.04)" : undefined }}>
+                        {/* Player */}
+                        <td>
+                          <div style={{ fontWeight: 700, color: "var(--foreground)", fontSize: 14 }}>{p.player.username}</div>
+                          <div className="font-mono-data" style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                            ID: {p.player.id.slice(0, 8)}...
+                          </div>
+                        </td>
+
+                        {/* Live Gameplay */}
+                        <td>
+                          {p.liveSession ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              <span style={{ fontSize: 11, fontWeight: 800, color: "var(--neon-cyan)", background: "rgba(0,212,255,0.14)", border: "1px solid rgba(0,212,255,0.35)", borderRadius: 6, padding: "2px 8px", width: "fit-content", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                ● LIVE: {p.liveSession.gameName ?? "Game"}
+                              </span>
+                              <span className="font-mono-data" style={{ fontSize: 11, color: "var(--gold)" }}>
+                                Buy-in: {p.liveSession.pointsSpent} pts
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--muted-foreground)", fontStyle: "italic" }}>
+                              Idle (No active session)
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Wins / Losses */}
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>
+                            <span style={{ color: "var(--neon-green)" }}>{p.wins} W</span>
+                            <span style={{ color: "var(--muted-foreground)", margin: "0 4px" }}>/</span>
+                            <span style={{ color: "var(--neon-pink)" }}>{p.losses} L</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
+                            {p.totalPlayed} Total Games
+                          </div>
+                        </td>
+
+                        {/* Win Rate */}
+                        <td style={{ textAlign: "center" }}>
+                          <span className="font-mono-data" style={{ fontSize: 14, fontWeight: 800, color: p.winRate >= 50 ? "var(--neon-green)" : "var(--gold)" }}>
+                            {p.winRate}%
+                          </span>
+                        </td>
+
+                        {/* Total Spent */}
+                        <td className="font-mono-data" style={{ textAlign: "right", color: "var(--muted-foreground)", fontSize: 13 }}>
+                          {formatPoints(p.totalSpent)}
+                        </td>
+
+                        {/* Total Won */}
+                        <td className="font-mono-data" style={{ textAlign: "right", color: "var(--gold)", fontWeight: 700, fontSize: 13 }}>
+                          {formatPoints(p.totalWon)}
+                        </td>
+
+                        {/* Net Win / Loss */}
+                        <td className="font-mono-data" style={{ textAlign: "right", fontWeight: 800, fontSize: 14, color: isWinning ? "var(--neon-green)" : p.netProfitLoss < 0 ? "var(--neon-pink)" : "var(--muted-foreground)" }}>
+                          {p.netProfitLoss > 0 ? `+${formatPoints(p.netProfitLoss)}` : p.netProfitLoss < 0 ? `-${formatPoints(Math.abs(p.netProfitLoss))}` : "0"}
+                          <div style={{ fontSize: 10, fontWeight: 600, color: isWinning ? "var(--neon-green)" : p.netProfitLoss < 0 ? "var(--neon-pink)" : "var(--muted-foreground)", textTransform: "uppercase" }}>
+                            {isWinning ? "Net Win (Profit)" : p.netProfitLoss < 0 ? "Net Loss" : "Even"}
+                          </div>
+                        </td>
+
+                        {/* Alter Action */}
+                        <td style={{ textAlign: "center" }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                            {p.liveSession ? (
+                              <button
+                                onClick={() => handleOpenAlterModal(p.liveSession!)}
+                                style={{
+                                  background: "linear-gradient(135deg, #FF2D78, #D81159)",
+                                  border: "none",
+                                  borderRadius: 8,
+                                  padding: "7px 12px",
+                                  color: "#FFF",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  fontFamily: "Outfit, sans-serif",
+                                  cursor: "pointer",
+                                  boxShadow: "0 2px 8px rgba(255,45,120,0.35)",
+                                }}
+                              >
+                                ⚡ Alter Game (Force Lose)
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "var(--muted-foreground)", padding: "6px" }}>
+                                No live game
+                              </span>
+                            )}
+                            <button
+                              onClick={() => setExpandedUserId(isExpanded ? null : p.player.id)}
+                              style={{
+                                background: "rgba(255,255,255,0.06)",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                borderRadius: 8,
+                                padding: "7px 10px",
+                                color: "var(--foreground)",
+                                fontSize: 12,
+                                cursor: "pointer",
+                              }}
+                              title="Toggle Session History Breakdown"
+                            >
+                              {isExpanded ? "▲ Hide" : "📜 History"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Gameplay Session History */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: "16px 24px", background: "rgba(7,7,13,0.7)", borderBottom: "1px solid rgba(201,153,58,0.15)" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--gold)", marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+                              <span>📜 Gameplay History Breakdown for {p.player.username}</span>
+                              <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{p.sessions.length} Recorded Sessions</span>
+                            </div>
+                            {p.sessions.length === 0 ? (
+                              <div style={{ fontSize: 12, color: "var(--muted-foreground)", padding: "10px 0" }}>No past game sessions recorded for this player.</div>
+                            ) : (
+                              <table className="casino-table" style={{ width: "100%", fontSize: 12 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left" }}>Game</th>
+                                    <th style={{ textAlign: "center" }}>Status</th>
+                                    <th style={{ textAlign: "right" }}>Buy-In Cost</th>
+                                    <th style={{ textAlign: "right" }}>Score Won</th>
+                                    <th style={{ textAlign: "right" }}>Net Result</th>
+                                    <th style={{ textAlign: "left" }}>Started At</th>
+                                    <th style={{ textAlign: "left" }}>Notes / Reason</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {p.sessions.map((s) => {
+                                    const netRound = (s.score ?? 0) - s.pointsSpent;
+                                    return (
+                                      <tr key={s.id}>
+                                        <td><span className="font-cinzel" style={{ fontWeight: 700, color: "var(--gold)" }}>{s.gameName}</span></td>
+                                        <td style={{ textAlign: "center" }}>
+                                          <span style={{ fontSize: 10, fontWeight: 700, color: s.isAltered ? "var(--neon-pink)" : s.status === "completed" ? "var(--neon-green)" : s.status === "in_progress" ? "var(--neon-cyan)" : "var(--neon-pink)", background: s.isAltered ? "rgba(255,45,120,0.15)" : s.status === "completed" ? "rgba(61,255,154,0.1)" : "rgba(0,212,255,0.1)", borderRadius: 4, padding: "2px 6px", textTransform: "uppercase" }}>
+                                            {s.isAltered ? "ALTERED (FORCED LOSS)" : s.status.replace("_", " ")}
+                                          </span>
+                                        </td>
+                                        <td className="font-mono-data" style={{ textAlign: "right", color: "var(--muted-foreground)" }}>{s.pointsSpent} pts</td>
+                                        <td className="font-mono-data" style={{ textAlign: "right", color: s.isAltered ? "var(--neon-pink)" : "var(--gold)", fontWeight: 700 }}>{s.score !== null ? s.score.toLocaleString() : "—"}</td>
+                                        <td className="font-mono-data" style={{ textAlign: "right", fontWeight: 700, color: netRound > 0 ? "var(--neon-green)" : netRound < 0 ? "var(--neon-pink)" : "var(--muted-foreground)" }}>
+                                          {netRound > 0 ? `+${netRound}` : netRound}
+                                        </td>
+                                        <td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--muted-foreground)" }}>{new Date(s.startedAt).toLocaleString()}</td>
+                                        <td style={{ color: "var(--muted-foreground)", fontStyle: s.alterationReason ? "italic" : undefined }}>
+                                          {s.alterationReason || (s.isAltered ? "Altered by Level 3 agent" : "Standard round")}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -204,10 +416,10 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,45,120,0.15)", border: "1px solid rgba(255,45,120,0.4)", display: "grid", placeItems: "center", fontSize: 22 }}>🛑</div>
               <div>
                 <h3 className="font-cinzel" style={{ fontSize: 17, fontWeight: 700, color: "var(--neon-pink)", margin: 0 }}>
-                  Confirm Game Alteration
+                  Confirm Live Game Alteration
                 </h3>
                 <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 2 }}>
-                  Force player session to lose (Score: 0)
+                  Force player session to lose immediately (Score: 0)
                 </div>
               </div>
             </div>
@@ -218,11 +430,11 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
                 <strong style={{ color: "var(--foreground)" }}>{selectedSession.playerUsername ?? selectedSession.userId}</strong>
               </div>
               <div style={{ fontSize: 13 }}>
-                <span style={{ color: "var(--muted-foreground)" }}>Game: </span>
+                <span style={{ color: "var(--muted-foreground)" }}>Live Game: </span>
                 <strong style={{ color: "var(--gold)" }}>{selectedSession.gameName}</strong>
               </div>
               <div style={{ fontSize: 13 }}>
-                <span style={{ color: "var(--muted-foreground)" }}>Points Spent: </span>
+                <span style={{ color: "var(--muted-foreground)" }}>Buy-In Cost: </span>
                 <strong style={{ color: "var(--neon-green)" }}>{selectedSession.pointsSpent} pts</strong>
               </div>
             </div>

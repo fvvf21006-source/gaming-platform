@@ -63,7 +63,9 @@ export async function getPlayerActivitySessions({ requesterId, isGlobal, startDa
        s.score,
        s.status,
        s.started_at,
-       s.completed_at
+       s.completed_at,
+       s.is_altered,
+       s.alteration_reason
      FROM game_sessions s
      JOIN users u ON u.id = s.user_id
      JOIN games g ON g.id = s.game_id

@@ -62,6 +62,8 @@ function toPlayerActivityItem(row) {
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
+    isAltered: Boolean(row.is_altered),
+    alterationReason: row.alteration_reason,
   };
 }
 

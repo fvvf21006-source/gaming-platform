@@ -197,6 +197,9 @@ export interface PlayerActivityReport {
     pointsSpent: number;
     score: number | null;
     status: string;
+    isAltered?: boolean;
+    alteredBy?: string | null;
+    alterationReason?: string | null;
     startedAt: string;
     completedAt: string | null;
   }>;
