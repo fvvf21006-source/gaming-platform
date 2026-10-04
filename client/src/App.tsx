@@ -100,10 +100,17 @@ export default function App() {
     );
   }
 
-  const requiredPermission = ROUTE_PERMISSIONS[pathSegment];
-  if (requiredPermission && !can(currentUser.role, requiredPermission)) {
-    return <Navigate to="/dashboard" replace />;
+  if (pathSegment === "game") {
+    if (!can(currentUser.role, "game.play") && !can(currentUser.role, "game.alter")) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  } else {
+    const requiredPermission = ROUTE_PERMISSIONS[pathSegment];
+    if (requiredPermission && !can(currentUser.role, requiredPermission)) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
+
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--background)" }}>
