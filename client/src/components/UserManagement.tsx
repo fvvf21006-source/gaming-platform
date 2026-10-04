@@ -38,13 +38,13 @@ export default function UserManagement({ currentUser }: Props) {
   const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserView | null>(null);
   const [confirm, setConfirm] = useState<ConfirmAction | null>(null);
   const [tempPassword, setTempPassword] = useState<{ username: string; value: string } | null>(null);
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
 
   const childRole = CHILD_ROLE[currentUser.role];
-  const allUsers = data?.items ?? [];
+  const allUsers = useMemo(() => withBlockedBy(data?.items ?? []), [data]);
   const rootUser = allUsers.find((u) => u.id === currentUser.id);
   const visible = useMemo(() => allUsers.filter((u) => u.id !== currentUser.id), [allUsers, currentUser.id]);
   const nameById = useMemo(() => new Map(allUsers.map((u) => [u.id, u.username])), [allUsers]);
@@ -265,12 +265,27 @@ function Chip({ children, active, color, onClick }: { children: ReactNode; activ
   );
 }
 
-function Avatar({ user, size = 46 }: { user: User; size?: number }) {
+// A frozen account blocks everyone beneath it; blockedBy names the nearest frozen ancestor.
+type UserView = User & { blockedBy?: string };
+
+function withBlockedBy(users: User[]): UserView[] {
+  const byId = new Map(users.map((u) => [u.id, u]));
+  return users.map((u) => {
+    let parent = u.createdBy ? byId.get(u.createdBy) : undefined;
+    while (parent) {
+      if (parent.status === "frozen") return { ...u, blockedBy: parent.username };
+      parent = parent.createdBy ? byId.get(parent.createdBy) : undefined;
+    }
+    return u;
+  });
+}
+
+function Avatar({ user, size = 46 }: { user: UserView; size?: number }) {
   const c = ROLE_COLORS[user.role];
   return (
     <div style={{ width: size, height: size, borderRadius: "50%", background: `linear-gradient(135deg, ${c}, ${c}55)`, display: "grid", placeItems: "center", fontWeight: 800, color: "#07070D", fontSize: size * 0.42, flexShrink: 0, position: "relative" }}>
       {user.username[0]?.toUpperCase()}
-      <span title={user.status} style={{ position: "absolute", right: -1, bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: "50%", border: "2px solid #0D0D18", background: user.status === "active" ? "var(--neon-green)" : "var(--neon-pink)" }} />
+      <span title={user.blockedBy ? `Blocked by ${user.blockedBy}` : user.status} style={{ position: "absolute", right: -1, bottom: -1, width: size * 0.28, height: size * 0.28, borderRadius: "50%", border: "2px solid #0D0D18", background: user.status === "active" && !user.blockedBy ? "var(--neon-green)" : "var(--neon-pink)" }} />
     </div>
   );
 }
@@ -280,11 +295,11 @@ function RolePill({ role }: { role: Role }) {
   return <span style={{ fontSize: 11, fontWeight: 700, color: c, background: `${c}1c`, border: `1px solid ${c}33`, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>{ROLE_LABELS[role]}</span>;
 }
 
-function StatusPill({ status }: { status: User["status"] }) {
-  const on = status === "active";
+function StatusPill({ status, blockedBy }: { status: User["status"]; blockedBy?: string }) {
+  const on = status === "active" && !blockedBy;
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--neon-green)" : "var(--neon-pink)", background: on ? "rgba(61,255,154,.1)" : "rgba(255,45,120,.1)", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>
-      {on ? "● Active" : "❄ Frozen"}
+    <span title={blockedBy ? `Blocked because ${blockedBy} is frozen` : undefined} style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--neon-green)" : "var(--neon-pink)", background: on ? "rgba(61,255,154,.1)" : "rgba(255,45,120,.1)", borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" }}>
+      {on ? "● Active" : status === "frozen" ? "❄ Frozen" : "⛔ Blocked"}
     </span>
   );
 }
@@ -307,10 +322,10 @@ interface RowHandlers {
   onReset: (u: User) => void;
 }
 
-function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: User; parent?: string; delay: number } & RowHandlers) {
+function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: UserView; parent?: string; delay: number } & RowHandlers) {
   const c = ROLE_COLORS[user.role];
   return (
-    <div className="um-card fade-up" style={{ animationDelay: `${delay}ms`, ["--accent" as string]: c, opacity: user.status === "frozen" ? 0.82 : 1 }} onClick={() => onSelect(user)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(user)} role="button" aria-label={`Open ${user.username}`}>
+    <div className="um-card fade-up" style={{ animationDelay: `${delay}ms`, ["--accent" as string]: c, opacity: user.status === "frozen" || user.blockedBy ? 0.82 : 1 }} onClick={() => onSelect(user)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(user)} role="button" aria-label={`Open ${user.username}`}>
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <Avatar user={user} />
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -320,7 +335,7 @@ function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: 
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "14px 0" }}>
         <RolePill role={user.role} />
-        <StatusPill status={user.status} />
+        <StatusPill status={user.status} blockedBy={user.blockedBy} />
         {user.balance !== null && <span className="font-mono-data" style={{ fontSize: 12, fontWeight: 700, color: "#FFD166", background: "rgba(255,209,102,.1)", border: "1px solid rgba(255,209,102,.25)", borderRadius: 999, padding: "3px 10px" }}>◆ {formatPoints(user.balance)}</span>}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
@@ -334,7 +349,7 @@ function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: 
   );
 }
 
-function UserTable({ users, onSelect, onToggle, onReset }: { users: User[] } & RowHandlers) {
+function UserTable({ users, onSelect, onToggle, onReset }: { users: UserView[] } & RowHandlers) {
   return (
     <div style={{ ...card, overflow: "hidden" }}>
       <div style={{ overflowX: "auto" }}>
@@ -364,7 +379,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: User[] } & R
                 </td>
                 <td><span className="font-mono-data" title={u.id} style={{ fontSize: 12, color: "var(--gold-dim)" }}>{shortId(u.id)}</span></td>
                 <td><RolePill role={u.role} /></td>
-                <td><StatusPill status={u.status} /></td>
+                <td><StatusPill status={u.status} blockedBy={u.blockedBy} /></td>
                 <td className="font-mono-data" style={{ textAlign: "right", fontWeight: 700, color: "#FFD166" }}>{u.balance !== null ? `◆ ${formatPoints(u.balance)}` : "—"}</td>
                 <td style={{ fontSize: 13, color: "var(--muted-foreground)" }}>{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td style={{ paddingRight: 20 }}><div style={{ display: "flex", justifyContent: "flex-end" }}><RowActions user={u} onToggle={onToggle} onReset={onReset} /></div></td>
@@ -377,7 +392,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: User[] } & R
   );
 }
 
-function TreeNode({ user, depth, allUsers, currentUserId, onSelect, onToggle, onReset }: { user: User; depth: number; allUsers: User[]; currentUserId: string } & RowHandlers) {
+function TreeNode({ user, depth, allUsers, currentUserId, onSelect, onToggle, onReset }: { user: UserView; depth: number; allUsers: UserView[]; currentUserId: string } & RowHandlers) {
   const children = allUsers.filter((u) => u.createdBy === user.id);
   const c = ROLE_COLORS[user.role];
   const isSelf = user.id === currentUserId;
@@ -432,7 +447,7 @@ function Modal({ children, onClose, maxWidth = 460 }: { children: ReactNode; onC
 // ───────────────────────── detail drawer ─────────────────────────
 
 function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, saving }: {
-  user: User;
+  user: UserView;
   parentName: string;
   onClose: () => void;
   onToggle: (u: User) => void;
@@ -475,7 +490,7 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
           <Avatar user={user} size={72} />
           <h2 style={{ margin: "14px 0 2px", fontSize: 24, fontWeight: 700 }}>{user.username}</h2>
           <div className="font-mono-data" style={{ fontSize: 12, color: "var(--muted-foreground)" }} title={user.id}>ID {shortId(user.id)}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}><RolePill role={user.role} /><StatusPill status={user.status} /></div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}><RolePill role={user.role} /><StatusPill status={user.status} blockedBy={user.blockedBy} /></div>
         </div>
 
         <div style={{ padding: "8px 24px 24px", overflowY: "auto", flex: 1 }}>
