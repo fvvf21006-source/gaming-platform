@@ -85,3 +85,7 @@ See table above.
 ## Session Update: Game Control Redesign
 
 - Rebuilt Level 3 Game Control (live board with bet points, search/filter/sort, responsive cards on phones); removed Game Control from Super Admin's UI. Checked in the browser as a real Level 3 at desktop and phone widths.
+
+## Session Update: Player Overview in Users
+
+- Won / Lost / Net on every player card and table row (Super Admin and Level 3); tapping a player opens Results, Games, Points, Activity and Profile tabs. Verified with a 19-step API script and in the browser.

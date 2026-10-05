@@ -2,12 +2,14 @@ import { formatPoints } from "../utils/points";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { AuthUser, User } from "../api/client";
+import type { AuthUser, PlayerResult, User } from "../api/client";
 import type { Role } from "../types/auth";
 import { ROLE_COLORS, ROLE_LABELS, ROLE_ORDER, CHILD_ROLE } from "../constants/roles";
 import { createUserSchema, updateProfileSchema, type CreateUserInput, type UpdateProfileInput } from "../schemas/users";
 import { useUsers, useCreateUser, useUpdateUser, useUpdateUserStatus, useResetUserPassword } from "../hooks/useUsers";
+import { usePlayerResults } from "../hooks/useReports";
 import { shortId } from "../utils/format";
+import PlayerInsight, { type InsightTab } from "./PlayerInsight";
 
 const GOLD = "#FFD166";
 
@@ -32,6 +34,10 @@ export default function UserManagement({ currentUser }: Props) {
   const updateUser = useUpdateUser();
   const updateStatus = useUpdateUserStatus();
   const resetPassword = useResetUserPassword();
+  // Super Admin and Level 3 can see how each player is doing at the table.
+  const canSeeResults = currentUser.role === "super_admin" || currentUser.role === "level_3";
+  const { data: resultsData } = usePlayerResults(canSeeResults);
+  const resultsById = useMemo(() => new Map((resultsData?.items ?? []).map((r) => [r.userId, r])), [resultsData]);
 
   const [search, setSearch] = useState("");
   const [view, setView] = useState<View>("cards");
@@ -104,7 +110,7 @@ export default function UserManagement({ currentUser }: Props) {
       });
   };
 
-  const actions = { onSelect: setSelectedUser, onToggle: requestToggle, onReset: requestReset };
+  const actions = { onSelect: setSelectedUser, onToggle: requestToggle, onReset: requestReset, results: canSeeResults ? resultsById : undefined };
 
   return (
     <div style={{ padding: "24px 28px 48px", fontFamily: "'Outfit',sans-serif" }}>
@@ -189,6 +195,8 @@ export default function UserManagement({ currentUser }: Props) {
       {selectedUser && (
         <UserDrawer
           user={selectedUser}
+          results={canSeeResults ? resultsById.get(selectedUser.id) : undefined}
+          showInsight={canSeeResults && selectedUser.role === "player"}
           parentName={selectedUser.createdBy ? nameById.get(selectedUser.createdBy) ?? shortId(selectedUser.createdBy) : "—"}
           onClose={() => setSelectedUser(null)}
           onToggle={requestToggle}
@@ -324,12 +332,14 @@ function RowActions({ user, onToggle, onReset }: { user: UserView; onToggle: (u:
 }
 
 interface RowHandlers {
+  /** Win/lose totals by player id; undefined when the viewer may not see them. */
+  results?: Map<string, PlayerResult>;
   onSelect: (u: User) => void;
   onToggle: (u: UserView) => void;
   onReset: (u: User) => void;
 }
 
-function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: UserView; parent?: string; delay: number } & RowHandlers) {
+function UserCard({ user, parent, delay, onSelect, onToggle, onReset, results }: { user: UserView; parent?: string; delay: number } & RowHandlers) {
   const c = ROLE_COLORS[user.role];
   return (
     <div className="um-card fade-up" style={{ animationDelay: `${delay}ms`, ["--accent" as string]: c, opacity: user.status === "frozen" || user.blockedBy ? 0.82 : 1 }} onClick={() => onSelect(user)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(user)} role="button" aria-label={`Open ${user.username}`}>
@@ -345,6 +355,7 @@ function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: 
         <StatusPill status={user.status} blockedBy={user.blockedBy} />
         {user.balance !== null && <span className="font-mono-data" style={{ fontSize: 12, fontWeight: 700, color: "#FFD166", background: "rgba(255,209,102,.1)", border: "1px solid rgba(255,209,102,.25)", borderRadius: 999, padding: "3px 10px" }}>◆ {formatPoints(user.balance)}</span>}
       </div>
+      {results && user.role === "player" && <WinLose result={results.get(user.id)} />}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ fontSize: 11, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
           {parent ? <>Under <b style={{ color: "var(--foreground)" }}>{parent}</b><br /></> : null}
@@ -356,11 +367,11 @@ function UserCard({ user, parent, delay, onSelect, onToggle, onReset }: { user: 
   );
 }
 
-function UserTable({ users, onSelect, onToggle, onReset }: { users: UserView[] } & RowHandlers) {
+function UserTable({ users, onSelect, onToggle, onReset, results }: { users: UserView[] } & RowHandlers) {
   return (
     <div style={{ ...card, overflow: "hidden" }}>
       <div style={{ overflowX: "auto" }}>
-        <table className="casino-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+        <table className="casino-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 840 }}>
           <thead>
             <tr>
               <th style={{ textAlign: "left", paddingLeft: 20 }}>Account</th>
@@ -368,6 +379,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: UserView[] }
               <th style={{ textAlign: "left" }}>Role</th>
               <th style={{ textAlign: "left" }}>Status</th>
               <th style={{ textAlign: "right" }}>Points</th>
+              {results && <th style={{ textAlign: "left" }}>Won / Lost</th>}
               <th style={{ textAlign: "left" }}>Joined</th>
               <th style={{ textAlign: "right", paddingRight: 20 }}>Actions</th>
             </tr>
@@ -388,6 +400,7 @@ function UserTable({ users, onSelect, onToggle, onReset }: { users: UserView[] }
                 <td><RolePill role={u.role} /></td>
                 <td><StatusPill status={u.status} blockedBy={u.blockedBy} /></td>
                 <td className="font-mono-data" style={{ textAlign: "right", fontWeight: 700, color: "#FFD166" }}>{u.balance !== null ? `◆ ${formatPoints(u.balance)}` : "—"}</td>
+                {results && <td>{u.role === "player" ? <WinLose result={results.get(u.id)} compact /> : <span style={{ color: "var(--muted-foreground)" }}>—</span>}</td>}
                 <td style={{ fontSize: 13, color: "var(--muted-foreground)" }}>{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td style={{ paddingRight: 20 }}><div style={{ display: "flex", justifyContent: "flex-end" }}><RowActions user={u} onToggle={onToggle} onReset={onReset} /></div></td>
               </tr>
@@ -451,10 +464,33 @@ function Modal({ children, onClose, maxWidth = 460 }: { children: ReactNode; onC
   );
 }
 
+/** Total won / total lost / net for a player, from their finished games. */
+function WinLose({ result, compact = false }: { result?: PlayerResult; compact?: boolean }) {
+  if (!result) {
+    return <div style={{ fontSize: 12, color: "var(--muted-foreground)", margin: compact ? 0 : "0 0 14px" }}>No finished games yet</div>;
+  }
+  const pill = (color: string, bg: string): CSSProperties => ({ fontSize: 12, fontWeight: 700, color, background: bg, borderRadius: 999, padding: "3px 10px", whiteSpace: "nowrap" });
+  const net = result.net;
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: compact ? 0 : "0 0 14px" }} title={`${result.rounds} finished games`}>
+      <span className="font-mono-data" style={pill("var(--neon-green)", "rgba(61,255,154,.1)")}>▲ Won {formatPoints(result.totalWon)}</span>
+      <span className="font-mono-data" style={pill("var(--neon-pink)", "rgba(255,45,120,.1)")}>▼ Lost {formatPoints(result.totalLost)}</span>
+      {!compact && (
+        <span className="font-mono-data" style={{ fontSize: 12, fontWeight: 700, color: net > 0 ? "var(--neon-green)" : net < 0 ? "var(--neon-pink)" : "var(--muted-foreground)" }}>
+          Net {net > 0 ? "+" : net < 0 ? "-" : ""}{formatPoints(Math.abs(net))}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ───────────────────────── detail drawer ─────────────────────────
 
-function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, saving }: {
+function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, saving, results, showInsight }: {
   user: UserView;
+  results?: PlayerResult;
+  /** Player accounts opened by Super Admin / Level 3 get results, games, points and activity. */
+  showInsight: boolean;
   parentName: string;
   onClose: () => void;
   onToggle: (u: User) => void;
@@ -463,6 +499,7 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
   saving: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState<InsightTab>("results");
   const [error, setError] = useState("");
   const form = useForm<UpdateProfileInput>({ resolver: zodResolver(updateProfileSchema) });
   const c = ROLE_COLORS[user.role];
@@ -470,6 +507,7 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
   useEffect(() => {
     form.reset({ email: user.email, fullName: user.profile?.fullName ?? "", displayName: user.profile?.displayName ?? "" });
     setEditing(false);
+    setTab("results");
     setError("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
@@ -489,18 +527,8 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
     ["Last updated", new Date(user.updatedAt).toLocaleString()],
   ];
 
-  return (
-    <div role="dialog" aria-modal="true" aria-label={`${user.username} details`} onClick={(e) => e.target === e.currentTarget && onClose()} style={{ position: "fixed", inset: 0, background: "rgba(5,4,12,0.6)", backdropFilter: "blur(4px)", zIndex: 150, display: "flex", justifyContent: "flex-end" }}>
-      <aside className="um-drawer">
-        <div style={{ padding: "26px 24px 22px", background: `linear-gradient(160deg, ${c}33, transparent 70%)`, position: "relative" }}>
-          <button onClick={onClose} aria-label="Close" style={{ position: "absolute", top: 16, right: 16, width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", cursor: "pointer", fontSize: 18 }}>×</button>
-          <Avatar user={user} size={72} />
-          <h2 style={{ margin: "14px 0 2px", fontSize: 24, fontWeight: 700 }}>{user.username}</h2>
-          <div className="font-mono-data" style={{ fontSize: 12, color: "var(--muted-foreground)" }} title={user.id}>ID {shortId(user.id)}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}><RolePill role={user.role} /><StatusPill status={user.status} blockedBy={user.blockedBy} /></div>
-        </div>
-
-        <div style={{ padding: "8px 24px 24px", overflowY: "auto", flex: 1 }}>
+  const profile = (
+    <>
           {editing ? (
             <form onSubmit={form.handleSubmit((d) => { setError(""); onSave(user.id, d, { onSuccess: () => setEditing(false), onError: setError }); })} style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
               <FormField label="Email" error={form.formState.errors.email?.message}><input type="email" style={fieldStyle()} {...form.register("email")} /></FormField>
@@ -531,6 +559,23 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
               </div>
             </>
           )}
+    </>
+  );
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`${user.username} details`} onClick={(e) => e.target === e.currentTarget && onClose()} style={{ position: "fixed", inset: 0, background: "rgba(5,4,12,0.6)", backdropFilter: "blur(4px)", zIndex: 150, display: "flex", justifyContent: "flex-end" }}>
+      <aside className="um-drawer" style={showInsight ? { width: "min(560px, 100%)" } : undefined}>
+        <div style={{ padding: "26px 24px 22px", background: `linear-gradient(160deg, ${c}33, transparent 70%)`, position: "relative" }}>
+          <button onClick={onClose} aria-label="Close" style={{ position: "absolute", top: 16, right: 16, width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", cursor: "pointer", fontSize: 18 }}>×</button>
+          <Avatar user={user} size={72} />
+          <h2 style={{ margin: "14px 0 2px", fontSize: 24, fontWeight: 700 }}>{user.username}</h2>
+          <div className="font-mono-data" style={{ fontSize: 12, color: "var(--muted-foreground)" }} title={user.id}>ID {shortId(user.id)}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}><RolePill role={user.role} /><StatusPill status={user.status} blockedBy={user.blockedBy} /></div>
+          {showInsight && <div style={{ marginTop: 12 }}><WinLose result={results} /></div>}
+        </div>
+
+        <div style={{ padding: "8px 24px 24px", overflowY: "auto", flex: 1 }}>
+          {showInsight ? <PlayerInsight playerId={user.id} tab={tab} onTab={setTab} profile={profile} /> : profile}
         </div>
       </aside>
     </div>

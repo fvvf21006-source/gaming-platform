@@ -36,6 +36,14 @@ router.get(
   reportController.login
 );
 
+// Win/lose totals per player, for the player cards (Super Admin and Level 3).
+router.get(
+  '/player-results',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  reportController.playerResults
+);
+
 // Player win/loss and the house wallet — Super Admin only.
 router.get(
   '/game-results',

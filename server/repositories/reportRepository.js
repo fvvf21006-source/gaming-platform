@@ -152,3 +152,33 @@ export async function getHouseWalletBalance() {
 
   return result.rows[0] ? Number(result.rows[0].balance) : null;
 }
+
+/**
+ * Win/lose totals for each player the requester may see (every player for
+ * Super Admin, direct-child players otherwise), over finished rounds. Only
+ * casino games pay their score out as points. Aggregated in SQL so a long
+ * history stays cheap to load for the whole player list.
+ * @param {{requesterId: string, isGlobal: boolean}} input
+ */
+export async function getPlayerResultTotals({ requesterId, isGlobal }) {
+  const result = await pool.query(
+    `WITH descendants AS (
+       SELECT id FROM users WHERE $2::boolean OR id = $1 OR created_by = $1
+     )
+     SELECT
+       s.user_id,
+       COUNT(*) AS rounds,
+       COALESCE(SUM(s.points_spent), 0) AS bought_in,
+       COALESCE(SUM(CASE WHEN g.pays_out THEN COALESCE(s.score, 0) ELSE 0 END), 0) AS paid_out,
+       COALESCE(SUM(GREATEST(CASE WHEN g.pays_out THEN COALESCE(s.score, 0) ELSE 0 END - s.points_spent, 0)), 0) AS total_won,
+       COALESCE(SUM(GREATEST(s.points_spent - CASE WHEN g.pays_out THEN COALESCE(s.score, 0) ELSE 0 END, 0)), 0) AS total_lost
+     FROM game_sessions s
+     JOIN games g ON g.id = s.game_id
+     WHERE s.status = 'completed'
+       AND s.user_id IN (SELECT id FROM descendants)
+     GROUP BY s.user_id`,
+    [requesterId, isGlobal]
+  );
+
+  return result.rows;
+}

@@ -73,3 +73,16 @@ export async function gameResults(req, res, next) {
     next(err);
   }
 }
+
+export async function playerResults(req, res, next) {
+  try {
+    const report = await reportService.getPlayerResultsReport({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+    });
+
+    res.status(200).json(report);
+  } catch (err) {
+    next(err);
+  }
+}

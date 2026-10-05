@@ -183,3 +183,34 @@ export async function getGameResultsReport({ startDate, endDate }) {
 
   return { summary: summarizeGameResults(items, houseBalance), items };
 }
+
+// --- Player win / lose totals --------------------------------------------
+
+/**
+ * Win/lose totals per player (Super Admin: all players; Level 3: their own).
+ * Players with no finished rounds are simply absent.
+ * @param {{requesterId: string, requesterRole: string}} input
+ */
+export async function getPlayerResultsReport({ requesterId, requesterRole }) {
+  const rows = await reportRepository.getPlayerResultTotals({
+    requesterId,
+    isGlobal: requesterRole === 'super_admin',
+  });
+
+  const items = rows.map((row) => {
+    const totalWon = Number(row.total_won);
+    const totalLost = Number(row.total_lost);
+
+    return {
+      userId: row.user_id,
+      rounds: Number(row.rounds),
+      boughtIn: Number(row.bought_in),
+      paidOut: Number(row.paid_out),
+      totalWon,
+      totalLost,
+      net: totalWon - totalLost,
+    };
+  });
+
+  return { items, total: items.length };
+}

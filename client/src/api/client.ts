@@ -616,3 +616,84 @@ export async function getNextOutcomes() {
   const body = await request("/api/games/next-outcomes", { method: "GET" });
   return body as ListResponse<NextOutcome>;
 }
+
+export interface PlayerResult {
+  userId: string;
+  rounds: number;
+  boughtIn: number;
+  paidOut: number;
+  totalWon: number;
+  totalLost: number;
+  net: number;
+}
+
+export async function getPlayerResults() {
+  const body = await request("/api/reports/player-results", { method: "GET" });
+  return body as ListResponse<PlayerResult>;
+}
+
+export interface PlayerGameResult {
+  gameName: string;
+  rounds: number;
+  openRounds: number;
+  boughtIn: number;
+  paidOut: number;
+  totalWon: number;
+  totalLost: number;
+  wins: number;
+  losses: number;
+  net: number;
+}
+
+export interface PlayerOverview {
+  player: {
+    id: string;
+    username: string;
+    email: string;
+    status: "active" | "frozen";
+    balance: number | null;
+    createdAt: string;
+    createdBy: string | null;
+    lastSeenAt: string | null;
+  };
+  totals: Omit<PlayerGameResult, "gameName"> & { winRate: number };
+  byGame: PlayerGameResult[];
+  sessions: Array<{
+    id: string;
+    gameName: string;
+    paysOut: boolean;
+    pointsSpent: number;
+    score: number | null;
+    payout: number;
+    status: "in_progress" | "completed" | "abandoned";
+    startedAt: string;
+    completedAt: string | null;
+    isAltered: boolean;
+    alterationReason: string | null;
+    forcedScore: number | null;
+  }>;
+  transactions: Array<{
+    id: string;
+    type: string;
+    direction: "in" | "out";
+    amount: number;
+    counterparty: string;
+    balanceAfter: number | string | null;
+    createdAt: string;
+  }>;
+  logins: { successes: number; failures: number; lastLoginAt: string | null };
+  logs: Array<{
+    id: string;
+    action: string;
+    actorUsername: string | null;
+    entityType: string | null;
+    metadata: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
+  historyLimit: number;
+}
+
+export async function getPlayerOverview(playerId: string) {
+  const body = await request(`/api/users/${playerId}/overview`, { method: "GET" });
+  return body as PlayerOverview;
+}

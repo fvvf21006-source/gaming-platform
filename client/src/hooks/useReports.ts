@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getGameResultsReport, getLoginReport, getPlayerActivityReport, getPointDistributionReport } from "../api/client";
+import { getPlayerResults, getGameResultsReport, getLoginReport, getPlayerActivityReport, getPointDistributionReport } from "../api/client";
 
 export function usePointDistributionReport(enabled: boolean, startDate?: string, endDate?: string) {
   return useQuery({
@@ -31,6 +31,15 @@ export function useGameResultsReport(enabled: boolean, startDate?: string, endDa
     queryFn: () => getGameResultsReport(startDate, endDate),
     enabled,
     // Players are winning and losing continuously, so keep the totals fresh.
+    refetchInterval: 30_000,
+  });
+}
+
+export function usePlayerResults(enabled: boolean) {
+  return useQuery({
+    queryKey: ["reports", "player-results"],
+    queryFn: getPlayerResults,
+    enabled,
     refetchInterval: 30_000,
   });
 }

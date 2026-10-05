@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createUser,
   getUser,
+  getPlayerOverview,
   listUsers,
   resetUserPassword,
   updateUser,
@@ -73,5 +74,14 @@ export function useUpdateUserStatus() {
 export function useResetUserPassword() {
   return useMutation({
     mutationFn: (id: string) => resetUserPassword(id),
+  });
+}
+
+export function usePlayerOverview(playerId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["users", "overview", playerId],
+    queryFn: () => getPlayerOverview(playerId as string),
+    enabled: enabled && Boolean(playerId),
+    refetchInterval: 15_000,
   });
 }

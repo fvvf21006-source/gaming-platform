@@ -2,6 +2,7 @@
 // business logic and no SQL; both delegate to userService.
 
 import * as userService from '../services/userService.js';
+import * as playerInsightService from '../services/playerInsightService.js';
 import { methodNotAllowed } from '../utils/httpErrors.js';
 
 export async function create(req, res, next) {
@@ -87,6 +88,20 @@ export async function resetPassword(req, res, next) {
     const result = await userService.resetUserPassword(req.user.userId, req.user.role, req.params.id);
 
     res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function playerOverview(req, res, next) {
+  try {
+    const overview = await playerInsightService.getPlayerOverview({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      playerId: req.params.id,
+    });
+
+    res.status(200).json(overview);
   } catch (err) {
     next(err);
   }

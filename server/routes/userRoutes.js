@@ -31,6 +31,17 @@ router.get('/', authenticate, userController.list);
 
 router.get('/:id', authenticate, idParamValidationRules, handleValidationErrors, userController.getById);
 
+// A player's results, game history, point movements and activity log
+// (Super Admin: any player; Level 3: players in their hierarchy).
+router.get(
+  '/:id/overview',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  idParamValidationRules,
+  handleValidationErrors,
+  userController.playerOverview
+);
+
 router.put(
   '/:id',
   authenticate,
