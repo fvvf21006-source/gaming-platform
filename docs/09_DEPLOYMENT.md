@@ -50,3 +50,7 @@ The repo root contains a `render.yaml` Blueprint for the API and the static clie
 On each API start, `npm run setup-db` (`server/scripts/setup-database.js`) applies pending migrations and one-time seeds, and creates the Super Admin if missing. It is idempotent and tracks progress in `schema_migrations`. In production the API refuses to start if `DATABASE_URL`, `JWT_SECRET` or `CLIENT_URL` is missing.
 
 Known prototype limits: the free API instance sleeps when idle (first request is slow); login lockout (FR-1.5) is not implemented.
+
+## One-time launch reset
+
+To start production clean (zero every wallet, and clear the point ledger, game history, notifications and audit log while keeping all user accounts), set the environment variable `RESET_LAUNCH_DATA` on the API service to any new value (for example `launch-2026-10-05`) and redeploy. `npm run setup-db` runs the reset once, inside a single transaction: it lifts the delete protection on the ledger, audit log and game sessions only for that transaction, restores it before committing, and writes one `launch_data_reset` audit entry recording what was removed. The value is recorded in `schema_migrations`, so redeploying with the same value does nothing; remove the variable afterwards. This cannot be undone. Accounts, the game catalog and settings are never touched.

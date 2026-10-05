@@ -83,3 +83,7 @@ The redesigned Game Control screen (`client/src/components/GameControl.tsx`) is 
 ## Player win/lose and a full player overview in the Users section
 
 Player cards (and the Table view) in Users show total won, total lost and net for Super Admin and Level 3, from `GET /api/reports/player-results` (one aggregate query per request, finished games only; only casino games pay their score out as points). Opening a player shows a drawer with Results, Games, Points, Activity and Profile tabs, backed by `GET /api/users/:id/overview` (Super Admin: any player; Level 3: players in their hierarchy; 404 for non-players). It returns totals, a per-game breakdown, the latest 100 games, point movements (including game bets and payouts), login counts, and the latest 100 audit-log entries involving the player, which the UI renders as plain-language lines.
+
+## Launch reset is a deploy-time, one-shot operation
+
+Clearing test data for launch must not become an everyday capability, because points and history are meant to be permanent. It therefore lives only in `server/scripts/resetLaunchData.js`, triggered by the `RESET_LAUNCH_DATA` environment variable at deploy time, runs once per value, lifts the history protections only inside one transaction and restores them before commit, and leaves a single audit record. There is no endpoint or button for it, and Super Admin still cannot remove points in the app.

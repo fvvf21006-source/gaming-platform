@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { hashPassword } from '../utils/password.js';
+import { resetLaunchData } from './resetLaunchData.js';
 
 dotenv.config();
 
@@ -68,6 +69,8 @@ try {
   const migrations = (await fs.readdir(path.join(dbDir, 'migrations'))).filter((f) => f.endsWith('.sql')).sort();
   for (const m of migrations) await applyFile('migration', m);
   for (const s of SEEDS) await applyFile('seed', s);
+  // One-time wipe of points, ledger, history and logs; runs once per distinct value (see resetLaunchData.js).
+  if (process.env.RESET_LAUNCH_DATA) await resetLaunchData(client, process.env.RESET_LAUNCH_DATA);
   await bootstrapSuperAdmin();
   console.log('database ready');
 } catch (err) {
