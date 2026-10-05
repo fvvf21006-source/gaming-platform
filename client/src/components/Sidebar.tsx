@@ -69,9 +69,9 @@ export default function Sidebar({
       ...g,
       items: g.items.filter(
         (n) =>
-          !n.permission ||
-          can(role, n.permission) ||
-          (n.id === "game" && (can(role, "game.play") || can(role, "game.alter")))
+          n.id === "game"
+            ? can(role, "game.play") || can(role, "game.alter")
+            : !n.permission || can(role, n.permission)
       ),
     }))
     .filter((g) => g.items.length > 0);

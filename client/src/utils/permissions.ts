@@ -25,7 +25,6 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "wallet.view",
     "wallet.transfer",
     "wallet.adjust",
-    "game.alter",
     "reports.view",
     "reports.playerActivity",
     "reports.loginReport",

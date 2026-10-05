@@ -81,3 +81,7 @@ See table above.
 ## Session Update: Next-Game Outcome Presets
 
 - Level 3 / Super Admin can preset the result of a player's next game from Game Control (new "Next Game" button per player, with a pending chip and cancel). Migration 022; verified with a 26-step API script and in the browser (set 3x on Lucky Wheel, player's next normal spin landed on 3x for +30 pts).
+
+## Session Update: Game Control Redesign
+
+- Rebuilt Level 3 Game Control (live board with bet points, search/filter/sort, responsive cards on phones); removed Game Control from Super Admin's UI. Checked in the browser as a real Level 3 at desktop and phone widths.
