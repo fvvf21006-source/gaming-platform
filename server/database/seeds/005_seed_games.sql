@@ -7,9 +7,14 @@
 INSERT INTO games (category_id, name, description, point_cost, is_active)
 SELECT c.id, v.name, v.description, v.point_cost, true
 FROM (VALUES
-    ('Block Blitz',   'Clear falling blocks before the stack reaches the top.', 10, 'Arcade'),
-    ('Number Chain',  'Connect adjacent numbers into the longest valid chain.', 15, 'Puzzle'),
-    ('Quick Draw',    'Draw and discard to build the best hand before time runs out.', 20, 'Card')
+    ('Lucky Wheel',   'Spin the wheel of fortune to hit mega multipliers up to 100x.', 10, 'Casino'),
+    ('Slot Machine',  '3-reel & 5-reel slot machine with gems, sevens and jackpot payouts.', 25, 'Slots'),
+    ('Mines Field',   'Uncover safe tiles on a 5x5 grid and cash out before hitting a mine.', 20, 'Quick Games'),
+    ('Crash Rocket',  'Watch the multiplier rocket rise and cash out before it crashes!', 50, 'Quick Games'),
+    ('Target Blitz',  'Fast-paced target shooting mini game.', 10, 'Arcade'),
+    ('Reflex Speed',  'Test your reaction speed and reflexes.', 15, 'Arcade'),
+    ('Number Chain',  'Connect adjacent numbers into the longest valid chain.', 15, 'Puzzle')
 ) AS v(name, description, point_cost, category_name)
 JOIN game_categories c ON c.name = v.category_name
 ON CONFLICT (name) DO NOTHING;
+

@@ -5,5 +5,9 @@
 INSERT INTO game_categories (name, description) VALUES
     ('Arcade', 'Fast, simple score-chasing games.'),
     ('Puzzle', 'Logic and pattern-based games.'),
-    ('Card', 'Simple card-based games.')
+    ('Card', 'Simple card-based games.'),
+    ('Casino', 'Wheel, Roulette and classic casino chance games.'),
+    ('Slots', 'Multi-reel slot machines with payout lines.'),
+    ('Quick Games', 'Mines, Crash multiplier and high-speed betting games.')
 ON CONFLICT (name) DO NOTHING;
+

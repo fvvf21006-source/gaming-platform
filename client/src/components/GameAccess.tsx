@@ -14,6 +14,13 @@ import { useWallet } from "../hooks/useWallet";
 import { usePlayerActivityReport } from "../hooks/useReports";
 import { useUsers } from "../hooks/useUsers";
 import ReflexGame from "./game/ReflexGame";
+import LuckyWheel from "./game/LuckyWheel";
+import SlotMachine from "./game/SlotMachine";
+import MinesGame from "./game/MinesGame";
+import CrashGame from "./game/CrashGame";
+import NumberChain from "./game/NumberChain";
+import TargetBlitz from "./game/TargetBlitz";
+
 
 interface Props {
   currentUser: AuthUser;
@@ -617,14 +624,37 @@ function PlayerGameAccess({}: Props) {
       {/* Guided sequence */}
       <div style={{ background: "var(--card)", border: "1px solid rgba(201,153,58,0.15)", borderRadius: 16, padding: "26px" }}>
         {activeSession ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", maxWidth: 420, margin: "0 auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", maxWidth: 480, margin: "0 auto" }}>
             <h2 className="font-cinzel" style={{ fontSize: 16, fontWeight: 700, color: "var(--gold)", margin: 0 }}>{activeSession.gameName ?? selectedGame?.name}</h2>
             {resumed && (
               <p style={{ fontSize: 12, color: "var(--neon-cyan)", margin: 0, background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.25)", borderRadius: 8, padding: "8px 12px" }}>
                 You have an unfinished session — {activeSession.pointsSpent} pts already spent. Finish it to record a score.
               </p>
             )}
-            <ReflexGame onFinish={handleFinish} />
+            {(() => {
+              const gameName = (activeSession.gameName || selectedGame?.name || "").toLowerCase();
+              const cost = activeSession.pointsSpent || selectedGame?.pointCost || 10;
+
+              if (gameName.includes("wheel") || gameName.includes("lucky")) {
+                return <LuckyWheel pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+              }
+              if (gameName.includes("slot")) {
+                return <SlotMachine pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+              }
+              if (gameName.includes("mine")) {
+                return <MinesGame pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+              }
+              if (gameName.includes("crash") || gameName.includes("rocket")) {
+                return <CrashGame pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+              }
+              if (gameName.includes("target")) {
+                return <TargetBlitz onFinish={handleFinish} />;
+              }
+              if (gameName.includes("number") || gameName.includes("chain")) {
+                return <NumberChain onFinish={handleFinish} />;
+              }
+              return <ReflexGame onFinish={handleFinish} />;
+            })()}
           </div>
         ) : selectedGame ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", maxWidth: 380, margin: "0 auto" }}>
