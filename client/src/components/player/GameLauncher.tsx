@@ -6,6 +6,10 @@ import { useWallet } from "../../hooks/useWallet";
 import ReflexGame from "../game/ReflexGame";
 import TargetBlitz from "../game/TargetBlitz";
 import NumberChain from "../game/NumberChain";
+import LuckyWheel from "../game/LuckyWheel";
+import SlotMachine from "../game/SlotMachine";
+import MinesGame from "../game/MinesGame";
+import CrashGame from "../game/CrashGame";
 import Confetti from "./Confetti";
 import { bestScoreFor, themeFor } from "./gameMeta";
 
@@ -100,6 +104,7 @@ export default function GameLauncher({ l }: { l: Launcher }) {
   if (l.session && l.activeGame) {
     const t = themeFor(l.activeGame.name);
     const props = { onFinish: l.finish };
+    const casino = { pointCost: l.session.pointsSpent, onComplete: l.finish, onCancel: l.quit };
     return (
       <div style={{ ...overlay, placeItems: "start center", background: "rgba(7,7,13,.97)" }}>
         <div style={{ width: "min(720px, 100%)", display: "flex", flexDirection: "column", gap: 18, paddingTop: 8 }}>
@@ -115,7 +120,11 @@ export default function GameLauncher({ l }: { l: Launcher }) {
           </div>
           {l.finishing ? (
             <div className="pl-glass" style={{ padding: 60, textAlign: "center", fontSize: 18, fontWeight: 700 }}>Saving your score…</div>
-          ) : t.kind === "target" ? <TargetBlitz {...props} /> : t.kind === "chain" ? <NumberChain {...props} /> : <ReflexGame {...props} />}
+          ) : t.kind === "wheel" ? <LuckyWheel {...casino} />
+          : t.kind === "slots" ? <SlotMachine {...casino} />
+          : t.kind === "mines" ? <MinesGame {...casino} />
+          : t.kind === "crash" ? <CrashGame {...casino} />
+          : t.kind === "target" ? <TargetBlitz {...props} /> : t.kind === "chain" ? <NumberChain {...props} /> : <ReflexGame {...props} />}
           <p style={{ textAlign: "center", fontSize: 12, color: "#7d778f", margin: 0 }}>
             Exiting now keeps this round open — you can pick it back up from the lobby.
           </p>

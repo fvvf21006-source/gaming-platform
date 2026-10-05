@@ -4,10 +4,29 @@
 
 import * as gameRepository from '../repositories/gameRepository.js';
 import * as userRepository from '../repositories/userRepository.js';
-import { forbidden, notFound, conflict } from '../utils/httpErrors.js';
+import { badRequest, forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
 import { isEffectivelyFrozen } from './accountStatusService.js';
+
+// Casino rounds report "points won", which the client computes. The highest
+// payout each game can legitimately produce is buy-in x this multiplier, so
+// anything above it is rejected rather than recorded. Keep in sync with
+// client/src/components/game/casinoConfig.ts. Arcade games have no cap.
+const MAX_SCORE_MULTIPLIER = {
+  'Lucky Wheel': 100,
+  'Slot Machine': 20,
+  'Mines Field': 100,
+  'Crash Rocket': 100,
+};
+
+function assertScoreWithinLimit(game, pointsSpent, score) {
+  const multiplier = MAX_SCORE_MULTIPLIER[game?.name];
+
+  if (multiplier !== undefined && score > pointsSpent * multiplier) {
+    throw badRequest(`Score exceeds the maximum possible payout for ${game.name}`);
+  }
+}
 
 function toPublicGame(row) {
   return {
@@ -131,6 +150,9 @@ export async function completeSession({ userId, sessionId, score }) {
     throw conflict('Session is not in progress');
   }
 
+  const game = await gameRepository.findGameById(session.game_id);
+  assertScoreWithinLimit(game, session.points_spent, Number(score));
+
   const updated = await gameRepository.completeSession(sessionId, score);
 
   if (!updated) {
@@ -142,8 +164,6 @@ export async function completeSession({ userId, sessionId, score }) {
     }
     throw conflict('Session is not in progress');
   }
-
-  const game = await gameRepository.findGameById(session.game_id);
 
   await createNotification({
     userId,

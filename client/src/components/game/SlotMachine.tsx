@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatPoints } from "../../utils/points";
+import { randomInt } from "../../utils/random";
+import { useSettle } from "./useSettle";
 
 interface Props {
   pointCost: number;
@@ -7,7 +9,16 @@ interface Props {
   onCancel: () => void;
 }
 
-const SYMBOLS = [
+interface Symbol {
+  char: string;
+  name: string;
+  multiplier: number;
+}
+
+// Three reels, six equally likely symbols (216 combinations).
+// Triple payouts: (20+10+5+3+2+8)/216 = 0.222; any pair pays 1.5x with
+// probability 90/216 = 0.417 → 0.625. RTP ≈ 0.847.
+const SYMBOLS: Symbol[] = [
   { char: "💎", name: "Diamond", multiplier: 20 },
   { char: "7️⃣", name: "Seven", multiplier: 10 },
   { char: "🔔", name: "Bell", multiplier: 5 },
@@ -15,73 +26,87 @@ const SYMBOLS = [
   { char: "🍋", name: "Lemon", multiplier: 2 },
   { char: "⭐", name: "Star", multiplier: 8 },
 ];
+const PAIR_MULTIPLIER = 1.5;
+const REEL_STOP_MS = [900, 1500, 2100];
+const TICK_MS = 80;
+
+const randomSymbol = () => SYMBOLS[randomInt(SYMBOLS.length)];
+
+function payoutFor([a, b, c]: Symbol[]): { multiplier: number; label: string } {
+  if (a.char === b.char && b.char === c.char) return { multiplier: a.multiplier, label: `Triple ${a.name}!` };
+  if (a.char === b.char || b.char === c.char || a.char === c.char) return { multiplier: PAIR_MULTIPLIER, label: "Pair" };
+  return { multiplier: 0, label: "No match" };
+}
 
 export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) {
   const [reels, setReels] = useState(["💎", "7️⃣", "🍒"]);
+  const [stopped, setStopped] = useState([true, true, true]);
   const [spinning, setSpinning] = useState(false);
-  const [result, setResult] = useState<{ multiplier: number; won: number } | null>(null);
+  const [result, setResult] = useState<{ multiplier: number; won: number; label: string } | null>(null);
+  const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
+  const settle = useSettle(onComplete);
+
+  useEffect(
+    () => () => {
+      timeouts.current.forEach(clearTimeout);
+      if (ticker.current) clearInterval(ticker.current);
+    },
+    []
+  );
 
   const spin = () => {
     if (spinning || result) return;
     setSpinning(true);
+    setStopped([false, false, false]);
 
-    let counter = 0;
-    const interval = setInterval(() => {
-      setReels([
-        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)].char,
-        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)].char,
-        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)].char,
-      ]);
-      counter++;
-      if (counter > 20) {
-        clearInterval(interval);
-        // Final reel calculation
-        const finalReels = [
-          SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
-          SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
-          SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)],
-        ];
-        setReels(finalReels.map((r) => r.char));
-        setSpinning(false);
+    // The outcome is decided up front; the animation only reveals it.
+    const final = [randomSymbol(), randomSymbol(), randomSymbol()];
+    const live = [true, true, true];
 
-        let multiplier = 0;
-        if (finalReels[0].char === finalReels[1].char && finalReels[1].char === finalReels[2].char) {
-          // 3 of a kind
-          multiplier = finalReels[0].multiplier;
-        } else if (
-          finalReels[0].char === finalReels[1].char ||
-          finalReels[1].char === finalReels[2].char ||
-          finalReels[0].char === finalReels[2].char
-        ) {
-          // 2 of a kind
-          multiplier = 1.5;
-        }
+    ticker.current = setInterval(() => {
+      setReels((prev) => prev.map((ch, i) => (live[i] ? randomSymbol().char : ch)));
+    }, TICK_MS);
 
-        const won = Math.round(pointCost * multiplier);
-        setResult({ multiplier, won });
+    REEL_STOP_MS.forEach((ms, i) => {
+      timeouts.current.push(
         setTimeout(() => {
-          onComplete(won);
-        }, 1500);
-      }
-    }, 80);
+          live[i] = false;
+          setReels((prev) => prev.map((ch, j) => (j === i ? final[i].char : ch)));
+          setStopped((prev) => prev.map((s, j) => (j === i ? true : s)));
+
+          if (i === REEL_STOP_MS.length - 1) {
+            if (ticker.current) clearInterval(ticker.current);
+            const { multiplier, label } = payoutFor(final);
+            const won = Math.round(pointCost * multiplier);
+            setSpinning(false);
+            setResult({ multiplier, won, label });
+            settle(won);
+          }
+        }, ms)
+      );
+    });
   };
 
+  const winning = Boolean(result && result.multiplier > 0);
+
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-slate-950 text-white rounded-2xl border border-amber-500/30 shadow-2xl max-w-md mx-auto">
-      <h2 className="text-2xl font-black text-amber-400 tracking-wider flex items-center gap-2">
-        🎰 VEGAS SLOTS
-      </h2>
-      <p className="text-xs text-slate-400 mt-1 mb-6">
-        Match 3 symbols for Mega Jackpot! (Entry: {formatPoints(pointCost)} pts)
+    <div className="flex flex-col items-center justify-center p-6 bg-slate-950 text-white rounded-2xl border border-amber-500/30 shadow-2xl w-full max-w-md mx-auto">
+      <h2 className="text-2xl font-black text-amber-400 tracking-wider">🎰 VEGAS SLOTS</h2>
+      <p className="text-xs text-slate-400 mt-1 mb-5">
+        Match 3 for the jackpot — pairs pay {PAIR_MULTIPLIER}x (buy-in {formatPoints(pointCost)} pts)
       </p>
 
-      {/* Reel Box */}
-      <div className="flex items-center justify-center gap-3 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 p-6 rounded-2xl border-4 border-amber-500/50 shadow-inner w-full">
+      <div className="flex items-center justify-center gap-3 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 p-5 rounded-2xl border-4 border-amber-500/50 shadow-inner w-full">
         {reels.map((symbol, idx) => (
           <div
             key={idx}
-            className={`w-24 h-28 bg-slate-950 rounded-xl border-2 border-amber-400/40 flex items-center justify-center text-5xl shadow-2xl transition-all ${
-              spinning ? "animate-pulse scale-95" : "scale-100"
+            className={`w-24 h-28 bg-slate-950 rounded-xl border-2 flex items-center justify-center text-5xl shadow-2xl transition-all ${
+              winning
+                ? "border-emerald-400 scale-105"
+                : stopped[idx]
+                  ? "border-amber-400/60 scale-100"
+                  : "border-slate-600 scale-95 blur-[1px]"
             }`}
           >
             {symbol}
@@ -89,22 +114,24 @@ export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) 
         ))}
       </div>
 
-      {result && (
-        <div className="mt-6 text-center animate-bounce">
-          <p className="text-sm font-semibold text-slate-300">
-            {result.multiplier > 0 ? `${result.multiplier}x Multiplier Hit!` : "No Match"}
-          </p>
-          <p className={`text-2xl font-black ${result.won > 0 ? "text-emerald-400" : "text-slate-400"}`}>
-            {result.won > 0 ? `+${formatPoints(result.won)} Points Won!` : "0 Points"}
-          </p>
-        </div>
-      )}
+      <div className="h-16 mt-4 flex flex-col items-center justify-center text-center" aria-live="polite">
+        {result && (
+          <>
+            <p className="text-sm font-semibold text-slate-300">
+              {result.label}
+              {result.multiplier > 0 ? ` · ${result.multiplier}x` : ""}
+            </p>
+            <p className={`text-2xl font-black ${result.won > 0 ? "text-emerald-400" : "text-slate-400"}`}>
+              {result.won > 0 ? `+${formatPoints(result.won)} pts` : "0 pts"}
+            </p>
+          </>
+        )}
+      </div>
 
-      {/* Action Buttons */}
-      <div className="flex items-center gap-4 mt-8 w-full">
+      <div className="flex items-center gap-4 mt-3 w-full">
         <button
           onClick={onCancel}
-          disabled={spinning}
+          disabled={spinning || Boolean(result)}
           className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors disabled:opacity-50"
         >
           Exit
@@ -114,7 +141,7 @@ export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) 
           disabled={spinning || Boolean(result)}
           className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-lg shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
         >
-          {spinning ? "SPINNING..." : "PULL LEVER"}
+          {spinning ? "SPINNING…" : "PULL LEVER"}
         </button>
       </div>
     </div>

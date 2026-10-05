@@ -1,6 +1,6 @@
 import type { GameSession } from "../../api/client";
 
-export type GameKind = "target" | "chain" | "reflex";
+export type GameKind = "target" | "chain" | "reflex" | "wheel" | "slots" | "mines" | "crash";
 
 export interface GameTheme {
   emoji: string;
@@ -30,6 +30,36 @@ const THEMES: Record<string, GameTheme> = {
     tagline: "Five rounds. Fastest finger wins.",
     howTo: "Wait for the screen to flash green, then tap instantly. Tap early and you lose the round.",
   },
+};
+
+// The seeded catalog uses different names than the original themes above, so
+// alias them to the same look.
+THEMES["Target Blitz"] = THEMES["Block Blitz"];
+THEMES["Reflex Speed"] = THEMES["Quick Draw"];
+
+THEMES["Lucky Wheel"] = {
+  emoji: "🎡", kind: "wheel", glow: "rgba(255,209,102,.55)",
+  gradient: "linear-gradient(135deg,#F59E0B 0%,#EC4899 100%)",
+  tagline: "One spin. Up to 100x.",
+  howTo: "Spin the wheel and win your buy-in times the multiplier it lands on. Most wedges pay nothing, a few pay big.",
+};
+THEMES["Slot Machine"] = {
+  emoji: "🎰", kind: "slots", glow: "rgba(255,209,102,.5)",
+  gradient: "linear-gradient(135deg,#C9993A 0%,#B91C1C 100%)",
+  tagline: "Line up three of a kind.",
+  howTo: "Pull the lever. Three matching symbols win big, any pair pays 1.5x your buy-in.",
+};
+THEMES["Mines Field"] = {
+  emoji: "💣", kind: "mines", glow: "rgba(61,255,154,.5)",
+  gradient: "linear-gradient(135deg,#059669 0%,#0F172A 100%)",
+  tagline: "Dodge the mines, cash out in time.",
+  howTo: "Reveal safe tiles to grow your multiplier, and cash out before you hit one of the 4 hidden mines.",
+};
+THEMES["Crash Rocket"] = {
+  emoji: "🚀", kind: "crash", glow: "rgba(0,212,255,.5)",
+  gradient: "linear-gradient(135deg,#0EA5E9 0%,#6D28D9 100%)",
+  tagline: "Cash out before it crashes.",
+  howTo: "The rocket's multiplier climbs until it crashes at a random moment. Cash out first to keep the payout.",
 };
 
 const FALLBACK: GameTheme = {
