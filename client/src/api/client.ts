@@ -548,3 +548,45 @@ export async function getAuditEntry(id: string) {
   const body = await request(`/api/audit/${id}`, { method: "GET" });
   return body.entry as AuditEntry;
 }
+
+export interface GameResultsReport {
+  summary: {
+    sessions: number;
+    boughtIn: number;
+    paidOut: number;
+    totalWon: number;
+    totalLost: number;
+    houseNet: number;
+    houseBalance: number;
+  };
+  items: Array<{
+    gameName: string;
+    sessions: number;
+    boughtIn: number;
+    paidOut: number;
+    totalWon: number;
+    totalLost: number;
+    houseNet: number;
+  }>;
+}
+
+export async function getGameResultsReport(startDate?: string, endDate?: string, format?: "json"): Promise<GameResultsReport>;
+export async function getGameResultsReport(startDate: string | undefined, endDate: string | undefined, format: "csv"): Promise<string>;
+export async function getGameResultsReport(startDate?: string, endDate?: string, format: "json" | "csv" = "json") {
+  const params = new URLSearchParams();
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  params.append("format", format);
+  const path = `/api/reports/game-results?${params}`;
+
+  if (format === "csv") {
+    const response = await fetch(`${BASE_URL}${path}`, {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    });
+    if (!response.ok) throw new Error("Failed to export report");
+    return response.text();
+  }
+
+  const body = await request(path, { method: "GET" });
+  return body as GameResultsReport;
+}

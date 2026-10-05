@@ -71,3 +71,9 @@ See table above.
 - Server rejects casino scores above the maximum payout; new seed `006_seed_casino_games.sql` so deployments that already applied seeds 004/005 get the games.
 - Level 3 / Super Admin can preset a live session's final score (`PUT /api/games/sessions/:sessionId/outcome`, migration 019); the game plays out to it. Verified end to end locally (API checks plus Crash Rocket and Lucky Wheel in the browser).
 - Deploy note: `npm run setup-db` applies migrations 014-019 and seed 006 on API start.
+
+## Session Update: House Wallet, Win/Loss Report, Immutable History
+
+- Buy-ins now go to a Super Admin house wallet and casino payouts come out of it (migrations 020-021, seed 007); new Super Admin Win / Loss report (`GET /api/reports/game-results`).
+- Super Admin can add points but not remove or lower them; ledger, audit log and game sessions can no longer be deleted or truncated.
+- Verified locally: 20-step money-flow script plus browser check of the Win / Loss tab (Today / This week / This month / custom range).

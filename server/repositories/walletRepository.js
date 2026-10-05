@@ -286,7 +286,8 @@ export async function getTransactions(userId) {
   const result = await pool.query(
     `SELECT id, sender_id, recipient_id, amount, sender_balance_before, sender_balance_after, recipient_balance_before, recipient_balance_after, performed_by, transaction_type, created_at
      FROM wallet_transactions
-     WHERE sender_id = $1 OR recipient_id = $1
+     WHERE (sender_id = $1 OR recipient_id = $1)
+       AND transaction_type NOT IN ('game_buy_in', 'game_payout')
      ORDER BY created_at DESC`,
     [userId]
   );

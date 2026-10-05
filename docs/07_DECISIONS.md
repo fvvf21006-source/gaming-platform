@@ -59,3 +59,15 @@ Visibility, reports, admin actions, and transaction-history access were narrowed
 The casino mini-games (Lucky Wheel, Slot Machine, Mines Field, Crash Rocket) pay virtual points only, with no real-money value. This supersedes the earlier "no odds-based outcomes" stance for these four games; points remain non-monetary. Their payout tables were rebalanced to a house edge (about 93-96% return) because the original multipliers returned far more than the buy-in.
 
 Two server-side rules back them. First, `completeSession` rejects a casino score above buy-in x the game's maximum multiplier. Second, a Level 3 user (own descendants only) or Super Admin can preset the final score of a player's in-progress session with `PUT /api/games/sessions/:sessionId/outcome` (migration 019, `forced_score`). `utils/casinoOutcomes.js` limits a preset to results the game can actually show. The player's game reads its own preset through `GET /api/games/sessions/:sessionId/outcome` and plays out to it, and `completeSession` records the preset whatever the client reports. Each preset is written to the audit log (`game_outcome_set`). Players are not shown that a preset exists, and the preset is never included in a player's own session responses. This is only acceptable because points have no monetary value; it must never be used with real money.
+
+## Game economy: the Super Admin house wallet
+
+Super Admin now has a wallet that acts as the house. When a player starts a game, the buy-in moves from the player's wallet to the house wallet (ledger type `game_buy_in`); when a round ends, a casino game's score is paid back to the player from the house wallet (`game_payout`). Whatever players lose therefore stays with Super Admin. Arcade games (`games.pays_out = false`) report a plain score rather than points, so their buy-ins are simply kept and nothing is paid back.
+
+Super Admin is still an unlimited issuer, so a win larger than the house balance is paid in full and the house wallet is floored at zero rather than going negative. Ordinary transfers from Super Admin are unchanged. Buy-in, payout and session completion happen in one database transaction.
+
+`GET /api/reports/game-results` (Super Admin only, JSON/CSV, optional date range) reports players' total won and lost per game, the house net and the house balance; the Reports page has a Win / Loss tab with Today, This week, This month and a custom range. Game ledger rows are excluded from the transfer history and the point-distribution report so those stay about hierarchy transfers.
+
+## Points are never removed, history is never deleted
+
+Super Admin can create points without limit but cannot remove them: `POST /api/wallet/adjust` refuses `remove` and any `set` that would lower a balance for Super Admin. User deletion is already unsupported. At the database level `wallet_transactions` rejects UPDATE, DELETE and TRUNCATE, and `audit_logs` and `game_sessions` reject DELETE and TRUNCATE (migrations 014 and 020), so transactions and history cannot be erased even by a direct query.

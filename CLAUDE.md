@@ -110,6 +110,11 @@ Full detail: [`docs/05_BUSINESS_RULES.md`](docs/05_BUSINESS_RULES.md). Key non-n
 - The "games" are simple, self-contained arcade games. This project does not implement betting, wagering, or odds-based outcomes of any kind.
 - All account creation is controlled (hierarchical) — there is no public self-registration endpoint.
 
+## Game Economy & History (added after P08)
+
+- Super Admin has a "house" wallet: game buy-ins move into it and casino payouts come out of it (see `docs/07_DECISIONS.md`). It is floored at zero; Super Admin remains an unlimited issuer for transfers.
+- Super Admin can add points but never remove or lower them. Transactions, audit logs and game sessions are permanent history: never add code that deletes or truncates them.
+
 ## What Claude Should NEVER Do
 
 - Never put SQL in a controller or service — SQL belongs only in repositories.

@@ -201,6 +201,26 @@ export async function adjustBalance({ adminId, adminRole, targetUserId, operatio
     }
   }
 
+  // Super Admin can create points without limit but can never take them
+  // away: no removals, and 'set' may only raise a balance.
+  if (adminRole === 'super_admin') {
+    if (operation === 'remove') {
+      throw forbidden('Super Admin can add points but cannot remove them');
+    }
+
+    if (operation === 'set') {
+      const wallet = await walletRepository.findWalletByUserId(targetUserId);
+
+      if (!wallet) {
+        throw notFound('User has no wallet');
+      }
+
+      if (amount < Number(wallet.balance)) {
+        throw forbidden('Super Admin cannot lower a balance; points can only be added');
+      }
+    }
+  }
+
   let result;
 
   try {

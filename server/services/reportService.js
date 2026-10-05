@@ -131,3 +131,55 @@ export async function getLoginReport({ startDate, endDate }) {
 
   return { summary: summarizeLoginActivity(items), items };
 }
+
+// --- Game Win / Loss -------------------------------------------------
+
+function toGameResultItem(row) {
+  const totalWon = Number(row.total_won);
+  const totalLost = Number(row.total_lost);
+
+  return {
+    gameName: row.game_name,
+    sessions: Number(row.sessions),
+    boughtIn: Number(row.bought_in),
+    paidOut: Number(row.paid_out),
+    totalWon,
+    totalLost,
+    houseNet: totalLost - totalWon,
+  };
+}
+
+function summarizeGameResults(items, houseBalance) {
+  const sum = (key) => items.reduce((total, item) => total + item[key], 0);
+  const totalWon = sum('totalWon');
+  const totalLost = sum('totalLost');
+
+  return {
+    sessions: sum('sessions'),
+    boughtIn: sum('boughtIn'),
+    paidOut: sum('paidOut'),
+    totalWon,
+    totalLost,
+    // What the house gained (positive) or paid out (negative) over the range.
+    houseNet: totalLost - totalWon,
+    houseBalance: houseBalance ?? 0,
+  };
+}
+
+/**
+ * Platform-wide player win/loss over settled game sessions, per game and in
+ * total (Super Admin only), optionally restricted to a date range. A session
+ * is "won" by score above its buy-in and "lost" by score below it; whatever
+ * players lose is what the house (Super Admin) wallet keeps.
+ * @param {{startDate?: string, endDate?: string}} input
+ */
+export async function getGameResultsReport({ startDate, endDate }) {
+  const [rows, houseBalance] = await Promise.all([
+    reportRepository.getGameResultsByGame({ startDate: startDate ?? null, endDate: endDate ?? null }),
+    reportRepository.getHouseWalletBalance(),
+  ]);
+
+  const items = rows.map(toGameResultItem);
+
+  return { summary: summarizeGameResults(items, houseBalance), items };
+}

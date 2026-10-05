@@ -61,3 +61,15 @@ export async function login(req, res, next) {
     next(err);
   }
 }
+
+export async function gameResults(req, res, next) {
+  try {
+    const { startDate, endDate, format } = req.query;
+
+    const report = await reportService.getGameResultsReport({ startDate, endDate });
+
+    sendReport(res, 'game-results-report', format, report);
+  } catch (err) {
+    next(err);
+  }
+}

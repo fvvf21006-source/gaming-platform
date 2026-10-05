@@ -225,8 +225,8 @@ export default function WalletPanel({ currentUser }: Props) {
                     <Field label="Operation">
                       <select {...adjustForm.register("operation")} className="wl-input">
                         <option value="add">Add (+)</option>
-                        <option value="remove">Remove (−)</option>
-                        <option value="set">Set (=)</option>
+                        {!isSuperAdmin && <option value="remove">Remove (−)</option>}
+                        <option value="set">{isSuperAdmin ? "Set (raise only)" : "Set (=)"}</option>
                       </select>
                     </Field>
                   </div>

@@ -12,6 +12,7 @@ export type Permission =
   | "reports.playerActivity"
   | "reports.view"
   | "reports.loginReport"
+  | "reports.gameResults"
   | "audit.view";
 
 const ADMIN_ROLES: Role[] = ["super_admin", "level_1", "level_2", "level_3"];
@@ -28,6 +29,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "reports.view",
     "reports.playerActivity",
     "reports.loginReport",
+    "reports.gameResults",
     "audit.view",
   ],
   level_1: ["users.view", "users.create", "users.freeze", "wallet.view", "wallet.transfer", "wallet.adjust", "reports.view"],

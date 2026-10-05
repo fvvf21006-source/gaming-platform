@@ -36,4 +36,14 @@ router.get(
   reportController.login
 );
 
+// Player win/loss and the house wallet — Super Admin only.
+router.get(
+  '/game-results',
+  authenticate,
+  authorize(['super_admin']),
+  dateRangeValidationRules,
+  handleValidationErrors,
+  reportController.gameResults
+);
+
 export default router;

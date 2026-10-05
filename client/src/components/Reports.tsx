@@ -5,9 +5,10 @@ import { can } from "../utils/permissions";
 import { formatPoints } from "../utils/points";
 import { exportToCSV, triggerPrintReport } from "../utils/export";
 import { usePointDistributionReport, usePlayerActivityReport, useLoginReport } from "../hooks/useReports";
+import GameResultsPanel from "./GameResultsPanel";
 import { getPointDistributionReport, getPlayerActivityReport, getLoginReport } from "../api/client";
 
-type Tab = "distribution" | "activity" | "login";
+type Tab = "distribution" | "activity" | "login" | "gameResults";
 type Bucket = "day" | "week" | "month";
 
 interface Props {
@@ -38,6 +39,7 @@ function downloadText(text: string, filename: string) {
 export default function Reports({ currentUser }: Props) {
   const canSeeLogin = can(currentUser.role, "reports.loginReport");
   const canSeeActivity = can(currentUser.role, "reports.playerActivity");
+  const canSeeGameResults = can(currentUser.role, "reports.gameResults");
   const [tab, setTab] = useState<Tab>("distribution");
   const [bucket, setBucket] = useState<Bucket>("day");
   const [startDate, setStartDate] = useState("");
@@ -82,6 +84,7 @@ export default function Reports({ currentUser }: Props) {
             ["distribution", "Point Distribution"],
             ...(canSeeActivity ? [["activity", "Player Activity"] as [Tab, string]] : []),
             ...(canSeeLogin ? [["login", "Login Report"] as [Tab, string]] : []),
+            ...(canSeeGameResults ? [["gameResults", "Win / Loss"] as [Tab, string]] : []),
           ] as [Tab, string][]).map(([id, label]) => (
             <button
               key={id}
@@ -100,6 +103,9 @@ export default function Reports({ currentUser }: Props) {
         </div>
       </div>
 
+      {tab === "gameResults" && canSeeGameResults && <GameResultsPanel />}
+
+      {tab !== "gameResults" && (
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
           <label style={filterLabel()}>Start Date</label>
@@ -122,6 +128,7 @@ export default function Reports({ currentUser }: Props) {
         <button onClick={handleExportCSV} style={exportBtn()}>Export CSV</button>
         <button onClick={triggerPrintReport} style={exportBtn()}>Export PDF (Print)</button>
       </div>
+      )}
 
       {tab === "distribution" && distribution.data && (
         <>

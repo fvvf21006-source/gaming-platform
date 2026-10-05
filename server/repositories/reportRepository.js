@@ -36,6 +36,7 @@ export async function getPointDistributionTransactions({ requesterId, isGlobal, 
      JOIN users sender ON sender.id = t.sender_id
      JOIN users recipient ON recipient.id = t.recipient_id
      WHERE (t.sender_id IN (SELECT id FROM descendants) OR t.recipient_id IN (SELECT id FROM descendants))
+       AND t.transaction_type NOT IN ('game_buy_in', 'game_payout')
        AND ($2::timestamptz IS NULL OR t.created_at >= $2)
        AND ($3::timestamptz IS NULL OR t.created_at <= $3)
      ORDER BY t.created_at DESC`,
@@ -103,4 +104,51 @@ export async function getLoginActivity({ startDate, endDate }) {
   );
 
   return result.rows;
+}
+
+/**
+ * Settled (completed) game sessions summed per game (only casino games pay
+ * their score out as points; arcade buy-ins count as fully lost), platform-wide (Super
+ * Admin only), optionally filtered by when the session finished. Sums are
+ * computed in SQL because the raw session rows can be very numerous; the
+ * service only totals the per-game rows.
+ * @param {{startDate: string|null, endDate: string|null}} input
+ */
+export async function getGameResultsByGame({ startDate, endDate }) {
+  const result = await pool.query(
+    `SELECT
+       g.name AS game_name,
+       COUNT(*) AS sessions,
+       COALESCE(SUM(s.points_spent), 0) AS bought_in,
+       COALESCE(SUM(CASE WHEN g.pays_out THEN s.score ELSE 0 END), 0) AS paid_out,
+       COALESCE(SUM(GREATEST(CASE WHEN g.pays_out THEN s.score ELSE 0 END - s.points_spent, 0)), 0) AS total_won,
+       COALESCE(SUM(GREATEST(s.points_spent - CASE WHEN g.pays_out THEN s.score ELSE 0 END, 0)), 0) AS total_lost
+     FROM game_sessions s
+     JOIN games g ON g.id = s.game_id
+     WHERE s.status = 'completed'
+       AND ($1::timestamptz IS NULL OR s.completed_at >= $1)
+       AND ($2::timestamptz IS NULL OR s.completed_at <= $2)
+     GROUP BY g.name
+     ORDER BY g.name ASC`,
+    [startDate, endDate]
+  );
+
+  return result.rows;
+}
+
+/**
+ * The Super Admin house wallet balance, or null if it has never received a buy-in.
+ */
+export async function getHouseWalletBalance() {
+  const result = await pool.query(
+    `SELECT w.balance
+     FROM wallets w
+     JOIN users u ON u.id = w.user_id
+     JOIN roles r ON r.id = u.role_id
+     WHERE r.name = 'super_admin'
+     ORDER BY u.created_at ASC
+     LIMIT 1`
+  );
+
+  return result.rows[0] ? Number(result.rows[0].balance) : null;
 }

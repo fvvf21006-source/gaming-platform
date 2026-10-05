@@ -45,6 +45,89 @@ export async function findGameById(id) {
 // and the service translates that into the right HTTP error.
 export const INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE';
 
+// Game points flow through the Super Admin's "house" wallet: a buy-in moves
+// from the player to the house, and the score is paid back out of it when
+// the round ends. Whatever a player loses therefore stays with the house.
+
+async function findHouseUserId(client) {
+  const result = await client.query(
+    `SELECT u.id
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     WHERE r.name = 'super_admin'
+     ORDER BY u.created_at ASC
+     LIMIT 1`
+  );
+
+  return result.rows[0]?.id ?? null;
+}
+
+async function recordGameTransaction(client, tx) {
+  await client.query(
+    `INSERT INTO wallet_transactions
+       (sender_id, recipient_id, amount,
+        sender_balance_before, sender_balance_after,
+        recipient_balance_before, recipient_balance_after,
+        performed_by, transaction_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      tx.senderId, tx.recipientId, tx.amount,
+      tx.senderBefore, tx.senderAfter,
+      tx.recipientBefore, tx.recipientAfter,
+      tx.performedBy, tx.type,
+    ]
+  );
+}
+
+/**
+ * Pays a finished session's score to the player out of the house wallet.
+ * Super Admin is an unlimited issuer (see transferFromUnlimitedSender), so a
+ * win larger than the house balance is still paid in full; the house wallet
+ * is simply floored at zero rather than going negative. Runs inside the
+ * caller's transaction.
+ */
+async function payOutScore(client, { userId, gameId, score, performedBy }) {
+  if (!(score > 0)) return;
+
+  // Only casino games report points won; an arcade score is just a score.
+  const game = await client.query(`SELECT pays_out FROM games WHERE id = $1`, [gameId]);
+  if (!game.rows[0]?.pays_out) return;
+
+  const credit = await client.query(
+    `UPDATE wallets
+     SET balance = balance + $1, updated_at = now()
+     WHERE user_id = $2
+     RETURNING balance`,
+    [score, userId]
+  );
+
+  if (credit.rowCount === 0) return;
+
+  const playerAfter = Number(credit.rows[0].balance);
+  const houseId = await findHouseUserId(client);
+  if (!houseId) return;
+
+  const house = await client.query(`SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE`, [houseId]);
+  const houseBefore = house.rows[0] ? Number(house.rows[0].balance) : 0;
+  const houseAfter = Math.max(houseBefore - score, 0);
+
+  if (house.rows[0]) {
+    await client.query(`UPDATE wallets SET balance = $1, updated_at = now() WHERE user_id = $2`, [houseAfter, houseId]);
+  }
+
+  await recordGameTransaction(client, {
+    type: 'game_payout',
+    senderId: houseId,
+    recipientId: userId,
+    amount: score,
+    senderBefore: houseBefore,
+    senderAfter: houseAfter,
+    recipientBefore: playerAfter - score,
+    recipientAfter: playerAfter,
+    performedBy,
+  });
+}
+
 /**
  * Debits the player's wallet by the game's point cost and creates
  * the game session, in a single database transaction — the same
@@ -87,6 +170,33 @@ export async function startGameSession({ userId, gameId, pointCost }) {
       [userId, gameId, pointCost]
     );
 
+    // The buy-in goes to the Super Admin house wallet (created on first use).
+    const houseId = await findHouseUserId(client);
+
+    if (houseId) {
+      const house = await client.query(
+        `INSERT INTO wallets (user_id, balance)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE
+           SET balance = wallets.balance + EXCLUDED.balance, updated_at = now()
+         RETURNING balance`,
+        [houseId, pointCost]
+      );
+      const houseAfter = Number(house.rows[0].balance);
+
+      await recordGameTransaction(client, {
+        type: 'game_buy_in',
+        senderId: userId,
+        recipientId: houseId,
+        amount: pointCost,
+        senderBefore: Number(walletBalance) + pointCost,
+        senderAfter: Number(walletBalance),
+        recipientBefore: houseAfter - pointCost,
+        recipientAfter: houseAfter,
+        performedBy: userId,
+      });
+    }
+
     await client.query('COMMIT');
     return { session: sessionResult.rows[0], walletBalance };
   } catch (err) {
@@ -123,15 +233,35 @@ export async function findSessionById(id) {
  * @param {number} score
  */
 export async function completeSession(id, score) {
-  const result = await pool.query(
-    `UPDATE game_sessions
-     SET status = 'completed', score = $1, completed_at = now()
-     WHERE id = $2 AND status = 'in_progress'
-     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
-    [score, id]
-  );
+  const client = await pool.connect();
 
-  return result.rows[0] || null;
+  try {
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      `UPDATE game_sessions
+       SET status = 'completed', score = $1, completed_at = now()
+       WHERE id = $2 AND status = 'in_progress'
+       RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
+      [score, id]
+    );
+    const session = result.rows[0];
+
+    if (!session) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    await payOutScore(client, { userId: session.user_id, gameId: session.game_id, score: Number(session.score), performedBy: session.user_id });
+
+    await client.query('COMMIT');
+    return session;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -209,20 +339,40 @@ export async function findActiveSessionsForAncestors(requesterId, requesterRole)
  * @param {{sessionId: string, alteredBy: string, score?: number, reason?: string}} input
  */
 export async function alterGameSession({ sessionId, alteredBy, score = 0, reason }) {
-  const result = await pool.query(
-    `UPDATE game_sessions
-     SET status = 'completed',
-         score = $1,
-         is_altered = true,
-         altered_by = $2,
-         alteration_reason = $3,
-         completed_at = now()
-     WHERE id = $4 AND status = 'in_progress'
-     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
-    [score, alteredBy, reason || 'Altered by Level 3 agent', sessionId]
-  );
+  const client = await pool.connect();
 
-  return result.rows[0] || null;
+  try {
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      `UPDATE game_sessions
+       SET status = 'completed',
+           score = $1,
+           is_altered = true,
+           altered_by = $2,
+           alteration_reason = $3,
+           completed_at = now()
+       WHERE id = $4 AND status = 'in_progress'
+       RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason`,
+      [score, alteredBy, reason || 'Altered by Level 3 agent', sessionId]
+    );
+    const session = result.rows[0];
+
+    if (!session) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    await payOutScore(client, { userId: session.user_id, gameId: session.game_id, score: Number(session.score), performedBy: alteredBy });
+
+    await client.query('COMMIT');
+    return session;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 

@@ -14,7 +14,7 @@ dotenv.config();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dbDir = path.join(here, '..', 'database');
-const SEEDS = ['001_seed_roles.sql', '003_seed_system_settings.sql', '004_seed_game_categories.sql', '005_seed_games.sql', '006_seed_casino_games.sql'];
+const SEEDS = ['001_seed_roles.sql', '003_seed_system_settings.sql', '004_seed_game_categories.sql', '005_seed_games.sql', '006_seed_casino_games.sql', '007_mark_paying_games.sql'];
 
 const { DATABASE_URL, SUPER_ADMIN_USERNAME, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD } = process.env;
 
