@@ -39,6 +39,22 @@ export const presetOutcomeValidationRules = [
     .withMessage('score must be a non-negative integer'),
 ];
 
+export const playerIdParamValidationRules = [
+  param('playerId').isUUID().withMessage('playerId must be a valid UUID'),
+];
+
+export const nextOutcomeValidationRules = [
+  body('score')
+    .notEmpty()
+    .withMessage('score is required')
+    .isInt({ min: 0 })
+    .withMessage('score must be a non-negative integer'),
+  body('gameId')
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage('gameId must be a valid UUID'),
+];
+
 export function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);
 

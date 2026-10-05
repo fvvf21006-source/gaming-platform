@@ -77,3 +77,7 @@ See table above.
 - Buy-ins now go to a Super Admin house wallet and casino payouts come out of it (migrations 020-021, seed 007); new Super Admin Win / Loss report (`GET /api/reports/game-results`).
 - Super Admin can add points but not remove or lower them; ledger, audit log and game sessions can no longer be deleted or truncated.
 - Verified locally: 20-step money-flow script plus browser check of the Win / Loss tab (Today / This week / This month / custom range).
+
+## Session Update: Next-Game Outcome Presets
+
+- Level 3 / Super Admin can preset the result of a player's next game from Game Control (new "Next Game" button per player, with a pending chip and cancel). Migration 022; verified with a 26-step API script and in the browser (set 3x on Lucky Wheel, player's next normal spin landed on 3x for +30 pts).

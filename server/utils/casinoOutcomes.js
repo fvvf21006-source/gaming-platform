@@ -46,3 +46,29 @@ export function isPresettableScore(gameName, pointCost, score) {
 
   return true;
 }
+
+/**
+ * The reachable result closest to `score` for a game and buy-in, so a preset
+ * made before the game is known ("any game") still lands on something the
+ * game can show. Ties go to the lower payout.
+ */
+export function nearestPresettableScore(gameName, pointCost, score) {
+  const discrete = DISCRETE_OUTCOMES[gameName];
+
+  if (discrete) {
+    const options = [...new Set(discrete.map((m) => Math.round(pointCost * m)))];
+    return options.reduce((best, option) => {
+      const better = Math.abs(option - score) < Math.abs(best - score);
+      const tie = Math.abs(option - score) === Math.abs(best - score) && option < best;
+      return better || tie ? option : best;
+    });
+  }
+
+  if (gameName === 'Crash Rocket') {
+    if (score <= 0) return 0;
+    if (score < pointCost) return score * 2 < pointCost ? 0 : pointCost;
+    return Math.min(score, pointCost * MAX_MULTIPLIER);
+  }
+
+  return score;
+}

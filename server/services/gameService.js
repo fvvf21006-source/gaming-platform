@@ -7,7 +7,7 @@ import * as userRepository from '../repositories/userRepository.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
-import { isPresettableScore } from '../utils/casinoOutcomes.js';
+import { isPresettableScore, nearestPresettableScore } from '../utils/casinoOutcomes.js';
 import { isEffectivelyFrozen } from './accountStatusService.js';
 
 // Casino rounds report "points won", which the client computes. The highest
@@ -74,6 +74,33 @@ export async function listGames() {
 }
 
 /**
+ * If a supervisor preset the result of this player's next game, turns it into
+ * this session's forced score. A preset made for "any game" is moved to the
+ * closest result the game can actually show. Never blocks the game starting.
+ */
+async function applyPendingNextOutcome({ userId, game, sessionId }) {
+  try {
+    const pending = await gameRepository.claimNextOutcome({ userId, gameId: game.id });
+
+    if (!pending) return;
+
+    const score = nearestPresettableScore(game.name, game.point_cost, pending.score);
+
+    await gameRepository.setForcedScore({ sessionId, forcedBy: pending.set_by, score });
+    await logAction({
+      actorId: pending.set_by,
+      action: 'game_next_outcome_applied',
+      entityType: 'game_session',
+      entityId: sessionId,
+      metadata: { targetPlayerId: userId, gameName: game.name, requestedScore: pending.score, forcedScore: score },
+    });
+  } catch (err) {
+    // The round is already paid for and running; a failed preset must not break it.
+    console.error('Failed to apply the next-game outcome:', err.message);
+  }
+}
+
+/**
  * Starts a game session for a Player: debits the point cost from
  * their wallet and creates the session, atomically (BR-20, BR-21).
  *
@@ -122,6 +149,8 @@ export async function playGame({ userId, gameId }) {
     entityId: result.session.id,
     metadata: { game: game.name, cost: game.point_cost },
   });
+
+  await applyPendingNextOutcome({ userId, game, sessionId: result.session.id });
 
   return {
     ...toPublicSession({ ...result.session, game_name: game.name, player_username: player.username }),
@@ -356,4 +385,122 @@ export async function getSessionOutcome({ userId, sessionId }) {
 
   const active = session.status === 'in_progress';
   return { forcedScore: active ? session.forced_score ?? null : null };
+}
+
+const SUPERVISOR_ROLES = ['super_admin', 'level_3'];
+
+/**
+ * Presets the result of a player's next game, before they start it. With a
+ * game, the score must be a result that game can produce; without one it
+ * applies to whichever game they start next and is moved to the nearest
+ * reachable result. Replaces any earlier pending preset for the player.
+ * @param {{requesterId: string, requesterRole: string, playerId: string, gameId?: string, score: number}} input
+ */
+export async function presetNextOutcome({ requesterId, requesterRole, playerId, gameId, score }) {
+  if (!SUPERVISOR_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can set a game outcome');
+  }
+
+  const player = await userRepository.findUserById(playerId);
+
+  if (!player || player.role !== 'player') {
+    throw notFound('Player not found');
+  }
+
+  if (requesterRole !== 'super_admin') {
+    const isDescendant = await userRepository.isDescendant(requesterId, playerId);
+    if (!isDescendant) {
+      throw forbidden('Player is outside your hierarchy');
+    }
+  }
+
+  let game = null;
+
+  if (gameId) {
+    game = await gameRepository.findGameById(gameId);
+
+    if (!game || !game.is_active) {
+      throw notFound('Game not found');
+    }
+
+    if (!isPresettableScore(game.name, game.point_cost, score)) {
+      throw badRequest(`${score} is not a result ${game.name} can produce for a ${game.point_cost}-point buy-in`);
+    }
+  }
+
+  const pending = await gameRepository.upsertNextOutcome({
+    userId: playerId,
+    gameId: game?.id ?? null,
+    score,
+    setBy: requesterId,
+  });
+
+  await logAction({
+    actorId: requesterId,
+    action: 'game_next_outcome_set',
+    entityType: 'user',
+    entityId: playerId,
+    metadata: { targetPlayerId: playerId, gameName: game?.name ?? 'any game', score },
+  });
+
+  return {
+    userId: pending.user_id,
+    playerUsername: player.username,
+    gameId: pending.game_id,
+    gameName: game?.name ?? null,
+    score: pending.score,
+  };
+}
+
+/**
+ * Cancels a player's pending next-game preset.
+ * @param {{requesterId: string, requesterRole: string, playerId: string}} input
+ */
+export async function clearNextOutcome({ requesterId, requesterRole, playerId }) {
+  if (!SUPERVISOR_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can set a game outcome');
+  }
+
+  if (requesterRole !== 'super_admin') {
+    const isDescendant = await userRepository.isDescendant(requesterId, playerId);
+    if (!isDescendant) {
+      throw forbidden('Player is outside your hierarchy');
+    }
+  }
+
+  const removed = await gameRepository.deleteNextOutcome(playerId);
+
+  if (!removed) {
+    throw notFound('No pending outcome for this player');
+  }
+
+  await logAction({
+    actorId: requesterId,
+    action: 'game_next_outcome_cleared',
+    entityType: 'user',
+    entityId: playerId,
+    metadata: { targetPlayerId: playerId },
+  });
+}
+
+/**
+ * Pending next-game presets for the players the requester manages.
+ * @param {{requesterId: string, requesterRole: string}} input
+ */
+export async function listNextOutcomes({ requesterId, requesterRole }) {
+  if (!SUPERVISOR_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can view game outcomes');
+  }
+
+  const rows = await gameRepository.findNextOutcomesForAncestors(requesterId, requesterRole);
+  const items = rows.map((row) => ({
+    userId: row.user_id,
+    playerUsername: row.player_username,
+    gameId: row.game_id,
+    gameName: row.game_name,
+    score: row.score,
+    createdAt: row.created_at,
+  }));
+
+  return { items, total: items.length };
 }

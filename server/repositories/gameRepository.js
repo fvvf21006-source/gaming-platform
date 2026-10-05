@@ -392,3 +392,71 @@ export async function setForcedScore({ sessionId, forcedBy, score }) {
 
   return result.rows[0] || null;
 }
+
+/**
+ * Saves (or replaces) the pending preset for a player's next game.
+ * @param {{userId: string, gameId: string|null, score: number, setBy: string}} input
+ */
+export async function upsertNextOutcome({ userId, gameId, score, setBy }) {
+  const result = await pool.query(
+    `INSERT INTO player_next_outcomes (user_id, game_id, score, set_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id) DO UPDATE
+       SET game_id = EXCLUDED.game_id, score = EXCLUDED.score, set_by = EXCLUDED.set_by, created_at = now()
+     RETURNING id, user_id, game_id, score, set_by, created_at`,
+    [userId, gameId, score, setBy]
+  );
+
+  return result.rows[0];
+}
+
+/**
+ * Atomically claims the pending preset if it applies to this game (any game,
+ * or exactly this one). Returns null when there is nothing to apply.
+ * @param {{userId: string, gameId: string}} input
+ */
+export async function claimNextOutcome({ userId, gameId }) {
+  const result = await pool.query(
+    `DELETE FROM player_next_outcomes
+     WHERE user_id = $1 AND (game_id IS NULL OR game_id = $2)
+     RETURNING id, user_id, game_id, score, set_by`,
+    [userId, gameId]
+  );
+
+  return result.rows[0] || null;
+}
+
+/**
+ * Cancels a player's pending preset. Returns true if there was one.
+ * @param {string} userId
+ */
+export async function deleteNextOutcome(userId) {
+  const result = await pool.query(`DELETE FROM player_next_outcomes WHERE user_id = $1`, [userId]);
+
+  return result.rowCount > 0;
+}
+
+/**
+ * Pending presets for the players a supervisor manages (everyone, for Super Admin).
+ * @param {string} requesterId
+ * @param {string} requesterRole
+ */
+export async function findNextOutcomesForAncestors(requesterId, requesterRole) {
+  const result = await pool.query(
+    `WITH RECURSIVE descendants AS (
+       SELECT id FROM users WHERE created_by = $1
+       UNION ALL
+       SELECT u.id FROM users u
+       JOIN descendants d ON u.created_by = d.id
+     )
+     SELECT n.id, n.user_id, u.username AS player_username, n.game_id, g.name AS game_name, n.score, n.created_at
+     FROM player_next_outcomes n
+     JOIN users u ON u.id = n.user_id
+     LEFT JOIN games g ON g.id = n.game_id
+     WHERE ($2 = 'super_admin' OR n.user_id IN (SELECT id FROM descendants))
+     ORDER BY n.created_at DESC`,
+    [requesterId, requesterRole]
+  );
+
+  return result.rows;
+}

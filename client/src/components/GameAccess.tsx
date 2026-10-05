@@ -8,6 +8,8 @@ import {
   useCompleteGameSession,
   useActiveGameSessions,
   useAlterGameSession,
+  useNextOutcomes,
+  useClearNextOutcome,
   useOnlinePlayers,
 } from "../hooks/useGames";
 import { useWallet } from "../hooks/useWallet";
@@ -19,6 +21,7 @@ import SlotMachine from "./game/SlotMachine";
 import MinesGame from "./game/MinesGame";
 import CrashGame from "./game/CrashGame";
 import PresetOutcomeModal from "./game/PresetOutcomeModal";
+import NextOutcomeModal from "./game/NextOutcomeModal";
 import NumberChain from "./game/NumberChain";
 import TargetBlitz from "./game/TargetBlitz";
 
@@ -43,6 +46,10 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
   const { data: activityReport, isLoading: loadingActivity, refetch: refetchActivity } = usePlayerActivityReport(true);
   const { data: usersData } = useUsers();
   const alterSession = useAlterGameSession();
+  const { data: nextData } = useNextOutcomes(true);
+  const clearNext = useClearNextOutcome();
+  const nextByUserId = useMemo(() => new Map((nextData?.items ?? []).map((n) => [n.userId, n])), [nextData]);
+  const [nextTarget, setNextTarget] = useState<{ id: string; name: string } | null>(null);
   const { data: onlineData } = useOnlinePlayers(true);
   const onlineIds = useMemo(() => new Set((onlineData?.items ?? []).map((o) => o.id)), [onlineData]);
 
@@ -374,6 +381,34 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
                               </span>
                             )}
                             <button
+                              onClick={() => { setSuccessMessage(""); setNextTarget({ id: p.player.id, name: p.player.username }); }}
+                              style={{
+                                background: "rgba(255,209,102,0.12)",
+                                border: "1px solid rgba(255,209,102,0.45)",
+                                borderRadius: 8,
+                                padding: "7px 12px",
+                                color: "var(--gold)",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                fontFamily: "Outfit, sans-serif",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {nextByUserId.has(p.player.id)
+                                ? `🎯 Next: ${formatPoints(nextByUserId.get(p.player.id)!.score)} pts${nextByUserId.get(p.player.id)!.gameName ? ` · ${nextByUserId.get(p.player.id)!.gameName}` : ""}`
+                                : "🎯 Next Game"}
+                            </button>
+                            {nextByUserId.has(p.player.id) && (
+                              <button
+                                onClick={() => clearNext.mutate(p.player.id)}
+                                disabled={clearNext.isPending}
+                                title="Cancel the preset for their next game"
+                                style={{ background: "none", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 9px", color: "var(--muted-foreground)", fontSize: 12, cursor: "pointer" }}
+                              >
+                                ✕
+                              </button>
+                            )}
+                            <button
                               onClick={() => setExpandedUserId(isExpanded ? null : p.player.id)}
                               style={{
                                 background: "rgba(255,255,255,0.06)",
@@ -452,6 +487,18 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
           </div>
         )}
       </div>
+
+      {nextTarget && (
+        <NextOutcomeModal
+          playerId={nextTarget.id}
+          playerName={nextTarget.name}
+          onClose={() => setNextTarget(null)}
+          onDone={(message) => {
+            setSuccessMessage(message);
+            setNextTarget(null);
+          }}
+        />
+      )}
 
       {outcomeSession && (
         <PresetOutcomeModal

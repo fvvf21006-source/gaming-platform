@@ -71,3 +71,7 @@ Super Admin is still an unlimited issuer, so a win larger than the house balance
 ## Points are never removed, history is never deleted
 
 Super Admin can create points without limit but cannot remove them: `POST /api/wallet/adjust` refuses `remove` and any `set` that would lower a balance for Super Admin. User deletion is already unsupported. At the database level `wallet_transactions` rejects UPDATE, DELETE and TRUNCATE, and `audit_logs` and `game_sessions` reject DELETE and TRUNCATE (migrations 014 and 020), so transactions and history cannot be erased even by a direct query.
+
+## Presetting a player's next game
+
+Besides presetting a round already in progress, a Level 3 user (own players only) or Super Admin can set the result of a player's next game before they start it: `PUT /api/games/players/:playerId/next-outcome` with a score and an optional game, `DELETE` to cancel, `GET /api/games/next-outcomes` to list (migration 022, table `player_next_outcomes`, one pending row per player). The preset is claimed atomically when the player starts a matching game and becomes that session's `forced_score`, so the game plays out to it exactly as a live preset does and it only ever applies to one game. If a game is chosen the score must be a result that game can produce; with "any game" the score is moved to the nearest result the game can show when the game starts. Setting, applying and cancelling are audit-logged (`game_next_outcome_set` / `_applied` / `_cleared`). Supervisors can now also read the game catalog (`GET /api/games`) to choose a game.

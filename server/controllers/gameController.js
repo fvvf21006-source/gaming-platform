@@ -104,3 +104,46 @@ export async function getOutcome(req, res, next) {
     next(err);
   }
 }
+
+export async function presetNext(req, res, next) {
+  try {
+    const outcome = await gameService.presetNextOutcome({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      playerId: req.params.playerId,
+      gameId: req.body.gameId ?? undefined,
+      score: Number(req.body.score),
+    });
+
+    res.status(200).json({ outcome });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function clearNext(req, res, next) {
+  try {
+    await gameService.clearNextOutcome({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      playerId: req.params.playerId,
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listNext(req, res, next) {
+  try {
+    const result = await gameService.listNextOutcomes({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}

@@ -8,13 +8,15 @@ import {
   completeSessionValidationRules,
   alterSessionValidationRules,
   presetOutcomeValidationRules,
+  playerIdParamValidationRules,
+  nextOutcomeValidationRules,
   handleValidationErrors,
 } from '../validators/gameValidator.js';
 
 const router = Router();
 
-// List games catalog (Player)
-router.get('/', authenticate, authorize(['player']), gameController.list);
+// List games catalog (players play from it; supervisors pick a game to preset)
+router.get('/', authenticate, authorize(['player', 'level_3', 'super_admin']), gameController.list);
 
 // Active live game sessions for descendant players (Level 3 & admins)
 router.get(
@@ -22,6 +24,14 @@ router.get(
   authenticate,
   authorize(['super_admin', 'level_3']),
   gameController.getActiveSessions
+);
+
+// Pending next-game presets for a supervisor's players
+router.get(
+  '/next-outcomes',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  gameController.listNext
 );
 
 // Registered before /:id/play so a literal path segment always wins
@@ -76,6 +86,26 @@ router.get(
   sessionIdParamValidationRules,
   handleValidationErrors,
   gameController.getOutcome
+);
+
+// Preset (or cancel) the result of a player's next game (Level 3 & admins)
+router.put(
+  '/players/:playerId/next-outcome',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  playerIdParamValidationRules,
+  nextOutcomeValidationRules,
+  handleValidationErrors,
+  gameController.presetNext
+);
+
+router.delete(
+  '/players/:playerId/next-outcome',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  playerIdParamValidationRules,
+  handleValidationErrors,
+  gameController.clearNext
 );
 
 export default router;

@@ -7,6 +7,9 @@ import {
   getActiveGameSessions,
   alterGameSession,
   presetGameOutcome,
+  presetNextOutcome,
+  clearNextOutcome,
+  getNextOutcomes,
   getOnlinePlayers,
 } from "../api/client";
 
@@ -88,6 +91,38 @@ export function usePresetGameOutcome() {
       presetGameOutcome(sessionId, score),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["games", "active-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useNextOutcomes(enabled: boolean) {
+  return useQuery({
+    queryKey: ["games", "next-outcomes"],
+    queryFn: getNextOutcomes,
+    enabled,
+    refetchInterval: 15_000,
+  });
+}
+
+export function usePresetNextOutcome() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ playerId, score, gameId }: { playerId: string; score: number; gameId?: string }) =>
+      presetNextOutcome(playerId, score, gameId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["games", "next-outcomes"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useClearNextOutcome() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (playerId: string) => clearNextOutcome(playerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["games", "next-outcomes"] });
       queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });

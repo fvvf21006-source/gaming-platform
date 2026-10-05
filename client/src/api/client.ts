@@ -590,3 +590,29 @@ export async function getGameResultsReport(startDate?: string, endDate?: string,
   const body = await request(path, { method: "GET" });
   return body as GameResultsReport;
 }
+
+export interface NextOutcome {
+  userId: string;
+  playerUsername: string;
+  gameId: string | null;
+  gameName: string | null;
+  score: number;
+  createdAt?: string;
+}
+
+export async function presetNextOutcome(playerId: string, score: number, gameId?: string) {
+  const body = await request(`/api/games/players/${playerId}/next-outcome`, {
+    method: "PUT",
+    body: JSON.stringify({ score, gameId }),
+  });
+  return body.outcome as NextOutcome;
+}
+
+export async function clearNextOutcome(playerId: string) {
+  await request(`/api/games/players/${playerId}/next-outcome`, { method: "DELETE" });
+}
+
+export async function getNextOutcomes() {
+  const body = await request("/api/games/next-outcomes", { method: "GET" });
+  return body as ListResponse<NextOutcome>;
+}
