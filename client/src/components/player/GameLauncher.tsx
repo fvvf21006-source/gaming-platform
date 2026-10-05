@@ -104,7 +104,7 @@ export default function GameLauncher({ l }: { l: Launcher }) {
   if (l.session && l.activeGame) {
     const t = themeFor(l.activeGame.name);
     const props = { onFinish: l.finish };
-    const casino = { pointCost: l.session.pointsSpent, onComplete: l.finish, onCancel: l.quit };
+    const casino = { sessionId: l.session.id, pointCost: l.session.pointsSpent, onComplete: l.finish, onCancel: l.quit };
     return (
       <div style={{ ...overlay, placeItems: "start center", background: "rgba(7,7,13,.97)" }}>
         <div style={{ width: "min(720px, 100%)", display: "flex", flexDirection: "column", gap: 18, paddingTop: 8 }}>

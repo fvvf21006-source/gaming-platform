@@ -76,3 +76,31 @@ export async function alter(req, res, next) {
   }
 }
 
+
+export async function presetOutcome(req, res, next) {
+  try {
+    const session = await gameService.presetSessionOutcome({
+      requesterId: req.user.userId,
+      requesterRole: req.user.role,
+      sessionId: req.params.sessionId,
+      score: Number(req.body.score),
+    });
+
+    res.status(200).json({ session });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOutcome(req, res, next) {
+  try {
+    const result = await gameService.getSessionOutcome({
+      userId: req.user.userId,
+      sessionId: req.params.sessionId,
+    });
+
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}

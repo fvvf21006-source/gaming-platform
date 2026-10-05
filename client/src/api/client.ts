@@ -147,6 +147,8 @@ export interface GameSession {
   isAltered?: boolean;
   alteredBy?: string | null;
   alterationReason?: string | null;
+  /** Supervisor-preset score; only present on supervisor listings. */
+  forcedScore?: number | null;
 }
 
 
@@ -405,6 +407,19 @@ export async function alterGameSession(sessionId: string, score: number = 0, rea
     body: JSON.stringify({ score, reason }),
   });
   return body.session as GameSession;
+}
+
+export async function presetGameOutcome(sessionId: string, score: number) {
+  const body = await request(`/api/games/sessions/${sessionId}/outcome`, {
+    method: "PUT",
+    body: JSON.stringify({ score }),
+  });
+  return body.session as GameSession;
+}
+
+export async function getGameOutcome(sessionId: string) {
+  const body = await request(`/api/games/sessions/${sessionId}/outcome`, { method: "GET" });
+  return body as { forcedScore: number | null };
 }
 
 export async function getGameHistory() {

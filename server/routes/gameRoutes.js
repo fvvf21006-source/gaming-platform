@@ -7,6 +7,7 @@ import {
   sessionIdParamValidationRules,
   completeSessionValidationRules,
   alterSessionValidationRules,
+  presetOutcomeValidationRules,
   handleValidationErrors,
 } from '../validators/gameValidator.js';
 
@@ -54,6 +55,27 @@ router.post(
   alterSessionValidationRules,
   handleValidationErrors,
   gameController.alter
+);
+
+// Preset the final score of a live session (Level 3 & admins)
+router.put(
+  '/sessions/:sessionId/outcome',
+  authenticate,
+  authorize(['super_admin', 'level_3']),
+  sessionIdParamValidationRules,
+  presetOutcomeValidationRules,
+  handleValidationErrors,
+  gameController.presetOutcome
+);
+
+// The player's own game reads its preset so the round can play out to it
+router.get(
+  '/sessions/:sessionId/outcome',
+  authenticate,
+  authorize(['player']),
+  sessionIdParamValidationRules,
+  handleValidationErrors,
+  gameController.getOutcome
 );
 
 export default router;

@@ -2,8 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { formatPoints } from "../../utils/points";
 import { randomInt, weightedIndex } from "../../utils/random";
 import { useSettle } from "./useSettle";
+import { useForcedOutcome } from "./useForcedOutcome";
+import { payoutFor } from "./casinoConfig";
 
 interface Props {
+  sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
   onCancel: () => void;
@@ -39,13 +42,14 @@ const SEGMENTS = WEDGE_ORDER.map((m) => ({
 
 const SPIN_MS = 4200;
 
-export default function LuckyWheel({ pointCost, onComplete, onCancel }: Props) {
+export default function LuckyWheel({ sessionId, pointCost, onComplete, onCancel }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rotationRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<{ multiplier: number; won: number } | null>(null);
   const settle = useSettle(onComplete);
+  const fetchForced = useForcedOutcome(sessionId);
 
   const drawWheel = useCallback((rotationDeg: number) => {
     const canvas = canvasRef.current;
@@ -126,12 +130,22 @@ export default function LuckyWheel({ pointCost, onComplete, onCancel }: Props) {
     };
   }, [drawWheel]);
 
-  const spin = () => {
+  const spin = async () => {
     if (spinning || result) return;
     setSpinning(true);
 
-    const outcome = PAYOUTS[weightedIndex(PAYOUTS.map((p) => p.weight))];
-    const candidates = SEGMENTS.flatMap((s, i) => (s.multiplier === outcome.multiplier ? [i] : []));
+    // A supervisor can preset the result; otherwise the odds table decides.
+    const forced = await fetchForced();
+    const forcedSegments =
+      forced === null ? [] : SEGMENTS.flatMap((s, i) => (payoutFor(pointCost, s.multiplier) === forced ? [i] : []));
+    const outcome =
+      forcedSegments.length > 0
+        ? { multiplier: SEGMENTS[forcedSegments[0]].multiplier }
+        : PAYOUTS[weightedIndex(PAYOUTS.map((p) => p.weight))];
+    const candidates =
+      forcedSegments.length > 0
+        ? forcedSegments
+        : SEGMENTS.flatMap((s, i) => (s.multiplier === outcome.multiplier ? [i] : []));
     const idx = candidates[randomInt(candidates.length)];
 
     // Land anywhere inside the wedge, not always dead centre.
@@ -153,7 +167,7 @@ export default function LuckyWheel({ pointCost, onComplete, onCancel }: Props) {
         frameRef.current = requestAnimationFrame(animate);
         return;
       }
-      const won = Math.round(pointCost * outcome.multiplier);
+      const won = payoutFor(pointCost, outcome.multiplier);
       setSpinning(false);
       setResult({ multiplier: outcome.multiplier, won });
       settle(won);

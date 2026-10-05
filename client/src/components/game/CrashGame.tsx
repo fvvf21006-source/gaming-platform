@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { formatPoints } from "../../utils/points";
 import { randomFloat } from "../../utils/random";
-import { MAX_MULTIPLIER, TARGET_RTP } from "./casinoConfig";
+import { MAX_MULTIPLIER, TARGET_RTP, payoutFor } from "./casinoConfig";
+import { useForcedOutcome } from "./useForcedOutcome";
 import { useSettle } from "./useSettle";
 
 interface Props {
+  sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
   onCancel: () => void;
@@ -25,17 +27,22 @@ function rollCrashPoint(): number {
 
 type Phase = "ready" | "running" | "crashed" | "cashed";
 
-export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
+export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }: Props) {
   const [multiplier, setMultiplier] = useState(1);
   const [phase, setPhase] = useState<Phase>("ready");
-  const [cashoutMult, setCashoutMult] = useState(1);
+  const [payout, setPayout] = useState(0);
+  const [launching, setLaunching] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const crashPointRef = useRef(1);
+  // Set when a supervisor preset a win: the multiplier the round must end on.
+  const presetCashRef = useRef<{ multiplier: number; points: number } | null>(null);
   const liveMultRef = useRef(1);
+  const elapsedRef = useRef(0);
   const trailRef = useRef<{ t: number; m: number }[]>([]);
   const settle = useSettle(onComplete);
+  const fetchForced = useForcedOutcome(sessionId);
 
   const drawGraph = useCallback((elapsed: number, mult: number, crashed: boolean) => {
     const canvas = canvasRef.current;
@@ -81,17 +88,51 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
     };
   }, [drawGraph]);
 
-  const launch = () => {
-    if (phase !== "ready") return;
-    crashPointRef.current = rollCrashPoint();
+  const endCashedOut = (atMultiplier: number, points: number) => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    liveMultRef.current = atMultiplier;
+    trailRef.current.push({ t: elapsedRef.current, m: atMultiplier });
+    setMultiplier(atMultiplier);
+    setPayout(points);
+    setPhase("cashed");
+    drawGraph(elapsedRef.current, atMultiplier, false);
+    settle(points);
+  };
+
+  const launch = async () => {
+    if (phase !== "ready" || launching) return;
+    setLaunching(true);
+
+    // A supervisor can preset the result: 0 crashes the rocket straight away,
+    // anything else flies to that multiplier and cashes out there.
+    const forced = await fetchForced();
+    presetCashRef.current = null;
+    if (forced === null) {
+      crashPointRef.current = rollCrashPoint();
+    } else if (forced === 0) {
+      crashPointRef.current = 1;
+    } else {
+      const target = Math.max(1, forced / pointCost);
+      presetCashRef.current = { multiplier: Number(target.toFixed(2)), points: forced };
+      crashPointRef.current = target + 1;
+    }
+
     trailRef.current = [{ t: 0, m: 1 }];
+    setLaunching(false);
     setPhase("running");
 
     const start = performance.now();
     const tick = (now: number) => {
       const elapsed = (now - start) / 1000;
+      elapsedRef.current = elapsed;
       const mult = Math.exp(GROWTH_PER_SEC * elapsed);
       const crashAt = crashPointRef.current;
+      const preset = presetCashRef.current;
+
+      if (preset && mult >= preset.multiplier) {
+        endCashedOut(preset.multiplier, preset.points);
+        return;
+      }
 
       if (mult >= crashAt) {
         liveMultRef.current = crashAt;
@@ -115,16 +156,13 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
 
   const cashOut = () => {
     if (phase !== "running") return;
-    if (frameRef.current) cancelAnimationFrame(frameRef.current);
     // Read the ref, not state: state can lag a frame behind what the player saw.
-    const locked = liveMultRef.current;
-    setCashoutMult(locked);
-    setPhase("cashed");
-    settle(Math.round(pointCost * locked));
+    const preset = presetCashRef.current;
+    if (preset) endCashedOut(preset.multiplier, preset.points);
+    else endCashedOut(liveMultRef.current, payoutFor(pointCost, liveMultRef.current));
   };
 
   const crashed = phase === "crashed";
-  const finished = crashed || phase === "cashed";
 
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-slate-950 text-white rounded-2xl border border-sky-500/30 shadow-2xl w-full max-w-md mx-auto">
@@ -143,7 +181,7 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
           </span>
           {phase === "running" && (
             <div className="text-xs text-emerald-300 font-semibold">
-              Cash out now: {formatPoints(Math.round(pointCost * multiplier))} pts
+              Cash out now: {formatPoints(payoutFor(pointCost, multiplier))} pts
             </div>
           )}
         </div>
@@ -153,7 +191,7 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
         {crashed && <p className="text-rose-500 font-bold text-lg">💥 Crashed at {multiplier.toFixed(2)}x</p>}
         {phase === "cashed" && (
           <p className="text-emerald-400 font-bold text-lg">
-            🎉 Cashed out @ {cashoutMult.toFixed(2)}x (+{formatPoints(Math.round(pointCost * cashoutMult))} pts)
+            🎉 Cashed out @ {multiplier.toFixed(2)}x (+{formatPoints(payout)} pts)
           </p>
         )}
       </div>
@@ -161,7 +199,7 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
       <div className="flex items-center gap-3 mt-2 w-full">
         <button
           onClick={onCancel}
-          disabled={phase !== "ready"}
+          disabled={phase !== "ready" || launching}
           className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors disabled:opacity-50"
         >
           Exit
@@ -169,14 +207,15 @@ export default function CrashGame({ pointCost, onComplete, onCancel }: Props) {
         {phase === "ready" ? (
           <button
             onClick={launch}
-            className="flex-1 py-3 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-lg shadow-lg shadow-sky-500/20 transition-all"
+            disabled={launching}
+            className="flex-1 py-3 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-lg shadow-lg shadow-sky-500/20 transition-all disabled:opacity-60"
           >
-            LAUNCH 🚀
+            {launching ? "LAUNCHING…" : "LAUNCH 🚀"}
           </button>
         ) : (
           <button
             onClick={cashOut}
-            disabled={phase !== "running" || finished}
+            disabled={phase !== "running"}
             className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-lg shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
           >
             CASH OUT

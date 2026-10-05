@@ -18,6 +18,7 @@ import LuckyWheel from "./game/LuckyWheel";
 import SlotMachine from "./game/SlotMachine";
 import MinesGame from "./game/MinesGame";
 import CrashGame from "./game/CrashGame";
+import PresetOutcomeModal from "./game/PresetOutcomeModal";
 import NumberChain from "./game/NumberChain";
 import TargetBlitz from "./game/TargetBlitz";
 
@@ -46,6 +47,7 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
   const onlineIds = useMemo(() => new Set((onlineData?.items ?? []).map((o) => o.id)), [onlineData]);
 
   const [selectedSession, setSelectedSession] = useState<GameSession | null>(null);
+  const [outcomeSession, setOutcomeSession] = useState<GameSession | null>(null);
   const [reason, setReason] = useState("Intervening in active winning session — forced loss executed by Level 3 agent");
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -331,6 +333,23 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
                         <td style={{ textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
                             {p.liveSession ? (
+                              <>
+                              <button
+                                onClick={() => { setSuccessMessage(""); setOutcomeSession(p.liveSession!); }}
+                                style={{
+                                  background: "linear-gradient(135deg, #C9993A, #FFD166)",
+                                  border: "none",
+                                  borderRadius: 8,
+                                  padding: "7px 12px",
+                                  color: "#07070D",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  fontFamily: "Outfit, sans-serif",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {p.liveSession.forcedScore != null ? `🎯 Outcome: ${formatPoints(p.liveSession.forcedScore)} pts` : "🎯 Set Outcome"}
+                              </button>
                               <button
                                 onClick={() => handleOpenAlterModal(p.liveSession!)}
                                 style={{
@@ -348,6 +367,7 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
                               >
                                 ⚡ Alter Game (Force Lose)
                               </button>
+                              </>
                             ) : (
                               <span style={{ fontSize: 11, color: "var(--muted-foreground)", padding: "6px" }}>
                                 No live game
@@ -432,6 +452,18 @@ function AdminGameAlterationPanel({ currentUser }: { currentUser: AuthUser }) {
           </div>
         )}
       </div>
+
+      {outcomeSession && (
+        <PresetOutcomeModal
+          session={outcomeSession}
+          onClose={() => setOutcomeSession(null)}
+          onDone={(message) => {
+            setSuccessMessage(message);
+            setOutcomeSession(null);
+            handleRefetch();
+          }}
+        />
+      )}
 
       {/* Alter Confirmation Modal */}
       {selectedSession && (
@@ -636,16 +668,16 @@ function PlayerGameAccess({}: Props) {
               const cost = activeSession.pointsSpent || selectedGame?.pointCost || 10;
 
               if (gameName.includes("wheel") || gameName.includes("lucky")) {
-                return <LuckyWheel pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <LuckyWheel sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
               }
               if (gameName.includes("slot")) {
-                return <SlotMachine pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <SlotMachine sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
               }
               if (gameName.includes("mine")) {
-                return <MinesGame pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <MinesGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
               }
               if (gameName.includes("crash") || gameName.includes("rocket")) {
-                return <CrashGame pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <CrashGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
               }
               if (gameName.includes("target")) {
                 return <TargetBlitz onFinish={handleFinish} />;

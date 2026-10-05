@@ -7,6 +7,7 @@ import * as userRepository from '../repositories/userRepository.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpErrors.js';
 import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
+import { isPresettableScore } from '../utils/casinoOutcomes.js';
 import { isEffectivelyFrozen } from './accountStatusService.js';
 
 // Casino rounds report "points won", which the client computes. The highest
@@ -54,6 +55,12 @@ function toPublicSession(row) {
     alteredBy: row.altered_by,
     alterationReason: row.alteration_reason,
   };
+}
+
+// Only supervisor-facing responses include the preset; a player's own
+// session responses never do.
+function toSupervisorSession(row) {
+  return { ...toPublicSession(row), forcedScore: row.forced_score ?? null };
 }
 
 /**
@@ -151,9 +158,15 @@ export async function completeSession({ userId, sessionId, score }) {
   }
 
   const game = await gameRepository.findGameById(session.game_id);
-  assertScoreWithinLimit(game, session.points_spent, Number(score));
+  const hasPreset = session.forced_score !== null && session.forced_score !== undefined;
 
-  const updated = await gameRepository.completeSession(sessionId, score);
+  if (!hasPreset) {
+    assertScoreWithinLimit(game, session.points_spent, Number(score));
+  }
+
+  // A supervisor's preset decides the result, whatever the client reports.
+  const finalScore = hasPreset ? session.forced_score : score;
+  const updated = await gameRepository.completeSession(sessionId, finalScore);
 
   if (!updated) {
     // Race condition: session was altered or completed right before update
@@ -168,7 +181,7 @@ export async function completeSession({ userId, sessionId, score }) {
   await createNotification({
     userId,
     type: 'game_completed',
-    message: `You completed ${game?.name ?? 'a game'} with a score of ${score}.`,
+    message: `You completed ${game?.name ?? 'a game'} with a score of ${finalScore}.`,
   });
 
   await logAction({
@@ -176,7 +189,7 @@ export async function completeSession({ userId, sessionId, score }) {
     action: 'game_completed',
     entityType: 'game_session',
     entityId: sessionId,
-    metadata: { score },
+    metadata: { score: finalScore, ...(hasPreset ? { preset: true } : {}) },
   });
 
   return toPublicSession({ ...updated, game_name: game?.name });
@@ -206,7 +219,7 @@ export async function getActiveSessions(requesterId, requesterRole) {
   }
 
   const rows = await gameRepository.findActiveSessionsForAncestors(requesterId, requesterRole);
-  const items = rows.map(toPublicSession);
+  const items = rows.map(toSupervisorSession);
 
   return { items, total: items.length };
 }
@@ -272,4 +285,75 @@ export async function alterSession({ requesterId, requesterRole, sessionId, scor
   });
 
   return toPublicSession({ ...altered, game_name: game?.name });
+}
+
+/**
+ * Presets the final score of a player's in-progress session. The player's
+ * game plays out to this result and completing the session records it.
+ * @param {{requesterId: string, requesterRole: string, sessionId: string, score: number}} input
+ */
+export async function presetSessionOutcome({ requesterId, requesterRole, sessionId, score }) {
+  const ALLOWED_ROLES = ['super_admin', 'level_3'];
+  if (!ALLOWED_ROLES.includes(requesterRole)) {
+    throw forbidden('Only Level 3 users and administrators can set a game outcome');
+  }
+
+  const session = await gameRepository.findSessionById(sessionId);
+
+  if (!session) {
+    throw notFound('Session not found');
+  }
+
+  if (session.status !== 'in_progress') {
+    throw conflict('Session is no longer in progress');
+  }
+
+  if (requesterRole !== 'super_admin') {
+    const isDescendant = await userRepository.isDescendant(requesterId, session.user_id);
+    if (!isDescendant) {
+      throw forbidden('Player is outside your hierarchy');
+    }
+  }
+
+  const game = await gameRepository.findGameById(session.game_id);
+
+  if (!isPresettableScore(game?.name, session.points_spent, score)) {
+    throw badRequest(`${score} is not a result ${game?.name ?? 'this game'} can produce for a ${session.points_spent}-point buy-in`);
+  }
+
+  const updated = await gameRepository.setForcedScore({ sessionId, forcedBy: requesterId, score });
+
+  if (!updated) {
+    throw conflict('Session is no longer in progress');
+  }
+
+  await logAction({
+    actorId: requesterId,
+    action: 'game_outcome_set',
+    entityType: 'game_session',
+    entityId: sessionId,
+    metadata: { targetPlayerId: session.user_id, gameName: game?.name, forcedScore: score },
+  });
+
+  return toSupervisorSession({ ...updated, game_name: game?.name, player_username: undefined });
+}
+
+/**
+ * Returns the preset score for the caller's own in-progress session, or null,
+ * so the game can play out to it.
+ * @param {{userId: string, sessionId: string}} input
+ */
+export async function getSessionOutcome({ userId, sessionId }) {
+  const session = await gameRepository.findSessionById(sessionId);
+
+  if (!session) {
+    throw notFound('Session not found');
+  }
+
+  if (session.user_id !== userId) {
+    throw forbidden('This is not your session');
+  }
+
+  const active = session.status === 'in_progress';
+  return { forcedScore: active ? session.forced_score ?? null : null };
 }

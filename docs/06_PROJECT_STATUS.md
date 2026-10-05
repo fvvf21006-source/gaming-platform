@@ -64,3 +64,10 @@ See table above.
 ## Current Version
 
 `v0.9.0-in-progress` — backend complete through P08; frontend (P09) rebuilt against the real API contract and business rules, typechecked and built successfully, pending live end-to-end verification against a running backend.
+
+## Session Update: Casino Games Hardening and Outcome Presets
+
+- Casino games rebalanced (house edge), crypto RNG, timer/race fixes, and now rendered in the player app.
+- Server rejects casino scores above the maximum payout; new seed `006_seed_casino_games.sql` so deployments that already applied seeds 004/005 get the games.
+- Level 3 / Super Admin can preset a live session's final score (`PUT /api/games/sessions/:sessionId/outcome`, migration 019); the game plays out to it. Verified end to end locally (API checks plus Crash Rocket and Lucky Wheel in the browser).
+- Deploy note: `npm run setup-db` applies migrations 014-019 and seed 006 on API start.

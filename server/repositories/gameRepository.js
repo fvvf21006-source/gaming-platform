@@ -103,7 +103,7 @@ export async function startGameSession({ userId, gameId, pointCost }) {
  */
 export async function findSessionById(id) {
   const result = await pool.query(
-    `SELECT id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason
+    `SELECT id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason, forced_score
      FROM game_sessions
      WHERE id = $1`,
     [id]
@@ -190,7 +190,8 @@ export async function findActiveSessionsForAncestors(requesterId, requesterRole)
        s.completed_at,
        s.is_altered,
        s.altered_by,
-       s.alteration_reason
+       s.alteration_reason,
+       s.forced_score
      FROM game_sessions s
      JOIN users u ON u.id = s.user_id
      JOIN games g ON g.id = s.game_id
@@ -224,3 +225,20 @@ export async function alterGameSession({ sessionId, alteredBy, score = 0, reason
   return result.rows[0] || null;
 }
 
+
+/**
+ * Presets the final score of an in_progress session. Returns null if the
+ * session is no longer in progress.
+ * @param {{sessionId: string, forcedBy: string, score: number}} input
+ */
+export async function setForcedScore({ sessionId, forcedBy, score }) {
+  const result = await pool.query(
+    `UPDATE game_sessions
+     SET forced_score = $1, forced_by = $2
+     WHERE id = $3 AND status = 'in_progress'
+     RETURNING id, user_id, game_id, points_spent, score, status, started_at, completed_at, is_altered, altered_by, alteration_reason, forced_score`,
+    [score, forcedBy, sessionId]
+  );
+
+  return result.rows[0] || null;
+}

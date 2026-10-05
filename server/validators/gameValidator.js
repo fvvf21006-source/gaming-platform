@@ -31,6 +31,13 @@ export const alterSessionValidationRules = [
     .withMessage('reason must be a string'),
 ];
 
+export const presetOutcomeValidationRules = [
+  body('score')
+    .notEmpty()
+    .withMessage('score is required')
+    .isInt({ min: 0 })
+    .withMessage('score must be a non-negative integer'),
+];
 
 export function handleValidationErrors(req, res, next) {
   const errors = validationResult(req);

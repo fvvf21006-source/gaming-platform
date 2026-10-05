@@ -6,6 +6,7 @@ import {
   playGame,
   getActiveGameSessions,
   alterGameSession,
+  presetGameOutcome,
   getOnlinePlayers,
 } from "../api/client";
 
@@ -75,6 +76,18 @@ export function useAlterGameSession() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["games", "active-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function usePresetGameOutcome() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, score }: { sessionId: string; score: number }) =>
+      presetGameOutcome(sessionId, score),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["games", "active-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });

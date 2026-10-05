@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { formatPoints } from "../../utils/points";
 import { randomInt } from "../../utils/random";
 import { useSettle } from "./useSettle";
+import { useForcedOutcome } from "./useForcedOutcome";
+import { payoutFor as payoutPoints } from "./casinoConfig";
 
 interface Props {
+  sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
   onCancel: () => void;
@@ -30,7 +33,30 @@ const PAIR_MULTIPLIER = 1.5;
 const REEL_STOP_MS = [900, 1500, 2100];
 const TICK_MS = 80;
 
+const SYMBOL_MULTIPLIERS = [0, PAIR_MULTIPLIER, ...SYMBOLS.map((s) => s.multiplier)];
+
 const randomSymbol = () => SYMBOLS[randomInt(SYMBOLS.length)];
+
+/** Builds a reel result that pays exactly `multiplier` (one of SLOT_MULTIPLIERS). */
+function reelsFor(multiplier: number): Symbol[] {
+  if (multiplier === 0) {
+    const pool = [...SYMBOLS];
+    return [0, 1, 2].map(() => pool.splice(randomInt(pool.length), 1)[0]);
+  }
+  if (multiplier === PAIR_MULTIPLIER) {
+    const pair = randomSymbol();
+    const other = SYMBOLS.filter((s) => s.char !== pair.char)[randomInt(SYMBOLS.length - 1)];
+    const reels = [pair, pair, other];
+    // Shuffle so the odd symbol isn't always on the right.
+    for (let i = reels.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      [reels[i], reels[j]] = [reels[j], reels[i]];
+    }
+    return reels;
+  }
+  const triple = SYMBOLS.find((s) => s.multiplier === multiplier) ?? randomSymbol();
+  return [triple, triple, triple];
+}
 
 function payoutFor([a, b, c]: Symbol[]): { multiplier: number; label: string } {
   if (a.char === b.char && b.char === c.char) return { multiplier: a.multiplier, label: `Triple ${a.name}!` };
@@ -38,7 +64,7 @@ function payoutFor([a, b, c]: Symbol[]): { multiplier: number; label: string } {
   return { multiplier: 0, label: "No match" };
 }
 
-export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) {
+export default function SlotMachine({ sessionId, pointCost, onComplete, onCancel }: Props) {
   const [reels, setReels] = useState(["💎", "7️⃣", "🍒"]);
   const [stopped, setStopped] = useState([true, true, true]);
   const [spinning, setSpinning] = useState(false);
@@ -46,6 +72,7 @@ export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) 
   const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
   const settle = useSettle(onComplete);
+  const fetchForced = useForcedOutcome(sessionId);
 
   useEffect(
     () => () => {
@@ -55,13 +82,18 @@ export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) 
     []
   );
 
-  const spin = () => {
+  const spin = async () => {
     if (spinning || result) return;
     setSpinning(true);
     setStopped([false, false, false]);
 
-    // The outcome is decided up front; the animation only reveals it.
-    const final = [randomSymbol(), randomSymbol(), randomSymbol()];
+    // The outcome is decided up front; the animation only reveals it. A
+    // supervisor can preset it, otherwise the reels are random.
+    const forced = await fetchForced();
+    const forcedMultiplier =
+      forced === null ? undefined : SYMBOL_MULTIPLIERS.find((m) => payoutPoints(pointCost, m) === forced);
+    const final =
+      forcedMultiplier !== undefined ? reelsFor(forcedMultiplier) : [randomSymbol(), randomSymbol(), randomSymbol()];
     const live = [true, true, true];
 
     ticker.current = setInterval(() => {
@@ -78,7 +110,7 @@ export default function SlotMachine({ pointCost, onComplete, onCancel }: Props) 
           if (i === REEL_STOP_MS.length - 1) {
             if (ticker.current) clearInterval(ticker.current);
             const { multiplier, label } = payoutFor(final);
-            const won = Math.round(pointCost * multiplier);
+            const won = payoutPoints(pointCost, multiplier);
             setSpinning(false);
             setResult({ multiplier, won, label });
             settle(won);

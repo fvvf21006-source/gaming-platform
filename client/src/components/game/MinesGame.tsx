@@ -1,50 +1,49 @@
 import { useState } from "react";
 import { formatPoints } from "../../utils/points";
 import { randomInt } from "../../utils/random";
-import { MAX_MULTIPLIER, TARGET_RTP } from "./casinoConfig";
+import {
+  MINES_COUNT,
+  MINES_GRID,
+  MINES_MULTIPLIERS,
+  MINES_SAFE_TILES,
+  minesMultiplier,
+  payoutFor,
+} from "./casinoConfig";
+import { useForcedOutcome } from "./useForcedOutcome";
 import { useSettle } from "./useSettle";
 
 interface Props {
+  sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
   onCancel: () => void;
 }
 
-const GRID_SIZE = 25; // 5x5
-const MINE_COUNT = 4;
-const SAFE_TILES = GRID_SIZE - MINE_COUNT;
-
-/**
- * Fair multiplier after `safeRevealed` safe tiles: the inverse of the
- * probability of surviving that many picks, scaled by the target RTP, so
- * cashing out at any point has the same expected return (~96%).
- */
-function multiplierFor(safeRevealed: number): number {
-  if (safeRevealed === 0) return 1;
-  let survive = 1;
-  for (let i = 0; i < safeRevealed; i++) survive *= (SAFE_TILES - i) / (GRID_SIZE - i);
-  return Math.min(Number((TARGET_RTP / survive).toFixed(2)), MAX_MULTIPLIER.mines);
-}
-
-function placeMines(): Set<number> {
-  const set = new Set<number>();
-  while (set.size < MINE_COUNT) set.add(randomInt(GRID_SIZE));
-  return set;
+/** `count` distinct tiles chosen at random, never including any in `exclude`. */
+function pickTiles(count: number, exclude: Set<number>): number[] {
+  const free = Array.from({ length: MINES_GRID }, (_, i) => i).filter((i) => !exclude.has(i));
+  const picked: number[] = [];
+  while (picked.length < count && free.length > 0) {
+    picked.push(free.splice(randomInt(free.length), 1)[0]);
+  }
+  return picked;
 }
 
 type Phase = "playing" | "lost" | "cashed";
 
-export default function MinesGame({ pointCost, onComplete, onCancel }: Props) {
-  const [mines] = useState(placeMines);
+export default function MinesGame({ sessionId, pointCost, onComplete, onCancel }: Props) {
+  const [mines, setMines] = useState<Set<number>>(() => new Set(pickTiles(MINES_COUNT, new Set())));
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [phase, setPhase] = useState<Phase>("playing");
   const [payout, setPayout] = useState(0);
+  const [busy, setBusy] = useState(false);
   const settle = useSettle(onComplete);
+  const fetchForced = useForcedOutcome(sessionId);
 
-  const safeCount = revealed.size - (phase === "lost" ? 1 : 0);
-  const multiplier = multiplierFor(phase === "lost" ? 0 : revealed.size);
-  const currentPayout = Math.round(pointCost * multiplier);
-  const nextMultiplier = multiplierFor(revealed.size + 1);
+  const safeCount = [...revealed].filter((i) => !mines.has(i)).length;
+  const multiplier = minesMultiplier(safeCount);
+  const currentPayout = payoutFor(pointCost, multiplier);
+  const nextMultiplier = minesMultiplier(safeCount + 1);
   const over = phase !== "playing";
 
   const finish = (next: Phase, won: number) => {
@@ -53,21 +52,60 @@ export default function MinesGame({ pointCost, onComplete, onCancel }: Props) {
     settle(won);
   };
 
-  const revealTile = (index: number) => {
-    if (over || revealed.has(index)) return;
-    const next = new Set(revealed).add(index);
-    setRevealed(next);
+  /** How many safe tiles a preset result corresponds to (0 = a loss), or null if none. */
+  const targetSafeTiles = (forced: number | null): number | null => {
+    if (forced === null) return null;
+    const n = MINES_MULTIPLIERS.findIndex((m) => payoutFor(pointCost, m) === forced);
+    return n >= 0 ? n : null;
+  };
 
+  const revealTile = async (index: number) => {
+    if (over || busy || revealed.has(index)) return;
+    setBusy(true);
+    const forced = await fetchForced();
+    setBusy(false);
+
+    const target = targetSafeTiles(forced);
+    const next = new Set(revealed).add(index);
+
+    // Preset loss: this pick is a mine.
+    if (target === 0) {
+      setMines(new Set([index, ...pickTiles(MINES_COUNT - 1, new Set([index, ...revealed]))]));
+      setRevealed(next);
+      finish("lost", 0);
+      return;
+    }
+
+    // Preset win: this pick is safe, and the round ends once the target is reached.
+    if (target !== null && forced !== null) {
+      if (mines.has(index)) {
+        const moved = new Set(mines);
+        moved.delete(index);
+        moved.add(pickTiles(1, new Set([...next, ...moved]))[0]);
+        setMines(moved);
+      }
+      setRevealed(next);
+      if (safeCount + 1 >= target) finish("cashed", forced);
+      return;
+    }
+
+    setRevealed(next);
     if (mines.has(index)) {
       finish("lost", 0);
-    } else if (next.size === SAFE_TILES) {
-      finish("cashed", Math.round(pointCost * multiplierFor(next.size)));
+    } else if (safeCount + 1 === MINES_SAFE_TILES) {
+      finish("cashed", payoutFor(pointCost, minesMultiplier(MINES_SAFE_TILES)));
     }
   };
 
-  const cashOut = () => {
-    if (over || revealed.size === 0) return;
-    finish("cashed", currentPayout);
+  const cashOut = async () => {
+    if (over || busy || revealed.size === 0) return;
+    setBusy(true);
+    const forced = await fetchForced();
+    setBusy(false);
+
+    const target = targetSafeTiles(forced);
+    if (target === 0) finish("lost", 0);
+    else finish("cashed", target !== null && forced !== null ? forced : currentPayout);
   };
 
   return (
@@ -75,19 +113,19 @@ export default function MinesGame({ pointCost, onComplete, onCancel }: Props) {
       <div className="text-center mb-2">
         <h2 className="text-2xl font-black text-amber-400 tracking-wide">💣 MINES FIELD</h2>
         <p className="text-xs text-slate-400 mt-1">
-          {MINE_COUNT} mines hidden in {GRID_SIZE} tiles. Cash out before you hit one! (buy-in {formatPoints(pointCost)} pts)
+          {MINES_COUNT} mines hidden in {MINES_GRID} tiles. Cash out before you hit one! (buy-in {formatPoints(pointCost)} pts)
         </p>
       </div>
 
       <div className="grid grid-cols-5 gap-2 my-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
-        {Array.from({ length: GRID_SIZE }).map((_, idx) => {
+        {Array.from({ length: MINES_GRID }).map((_, idx) => {
           const picked = revealed.has(idx);
           const showMine = mines.has(idx) && (picked || over);
           const showGem = !mines.has(idx) && (picked || over);
           return (
             <button
               key={idx}
-              disabled={over || picked}
+              disabled={over || picked || busy}
               onClick={() => revealTile(idx)}
               aria-label={picked ? (mines.has(idx) ? "Mine" : "Safe tile") : `Tile ${idx + 1}`}
               className={`w-12 h-12 rounded-lg font-black text-lg flex items-center justify-center transition-all ${
@@ -105,13 +143,11 @@ export default function MinesGame({ pointCost, onComplete, onCancel }: Props) {
       </div>
 
       <div className="grid grid-cols-3 gap-2 w-full text-center text-xs">
-        <Stat label="Safe tiles" value={`${Math.max(safeCount, 0)}/${SAFE_TILES}`} />
+        <Stat label="Safe tiles" value={`${safeCount}/${MINES_SAFE_TILES}`} />
         <Stat label="Multiplier" value={`${multiplier.toFixed(2)}x`} accent="text-amber-400" />
         <Stat label={over ? "Result" : "Cash out"} value={`${formatPoints(over ? payout : currentPayout)} pts`} accent="text-emerald-400" />
       </div>
-      {!over && (
-        <p className="text-[11px] text-slate-500 mt-2">Next safe tile pays {nextMultiplier.toFixed(2)}x</p>
-      )}
+      {!over && <p className="text-[11px] text-slate-500 mt-2">Next safe tile pays {nextMultiplier.toFixed(2)}x</p>}
 
       <div className="h-8 mt-2 text-center" aria-live="polite">
         {phase === "lost" && <p className="text-rose-400 font-bold text-lg">💥 KABOOM! You hit a mine.</p>}
@@ -129,7 +165,7 @@ export default function MinesGame({ pointCost, onComplete, onCancel }: Props) {
         </button>
         <button
           onClick={cashOut}
-          disabled={over || revealed.size === 0}
+          disabled={over || busy || revealed.size === 0}
           className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-lg shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
         >
           CASH OUT
