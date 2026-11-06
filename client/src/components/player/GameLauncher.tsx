@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { Game, GameSession } from "../../api/client";
 import { formatPoints } from "../../utils/points";
 import { useCompleteGameSession, useGameHistory, usePlayGame } from "../../hooks/useGames";
@@ -24,7 +24,9 @@ export function useGameLauncher(games: Game[]) {
   const [session, setSession] = useState<GameSession | null>(null);
   const [result, setResult] = useState<{ session: GameSession; previousBest: number } | null>(null);
   const [error, setError] = useState("");
-  const [stake, setStake] = useState(0.5);
+  const [stakeInput, setStakeInput] = useState("0.5");
+  const stake = stakeInput.trim() === "" ? NaN : Number(stakeInput);
+  const setStake = (value: number) => setStakeInput(String(value));
   const [pendingScore, setPendingScore] = useState<number | null>(null);
   const [dismissedResume, setDismissedResume] = useState(false);
 
@@ -36,12 +38,13 @@ export function useGameLauncher(games: Game[]) {
     s ? games.find((g) => g.id === s.gameId) ?? ({ id: s.gameId, name: s.gameName ?? "Game", pointCost: s.pointsSpent } as Game) : null;
 
   return {
-    history, picked, session, result, error, resumable, stake, setStake, pendingScore,
+    history, picked, session, result, error, resumable, stake, setStake, stakeInput, setStakeInput, pendingScore,
+    stakeValid: isValidStake(stake, Number(picked?.pointCost ?? gameOf(session)?.pointCost ?? 0.5)),
     activeGame: gameOf(session),
     pick: (g: Game) => { setDismissedResume(false); setError(""); setStake(Number(g.pointCost)); setPicked(g); },
     cancelPick: () => setPicked(null),
     confirm: () => {
-      if (!picked || startingRef.current) return;
+      if (!picked || startingRef.current || !isValidStake(stake, Number(picked.pointCost))) return;
       startingRef.current = true;
       setError("");
       playGame.mutate({ gameId: picked.id, stake }, {
@@ -51,7 +54,7 @@ export function useGameLauncher(games: Game[]) {
       });
     },
     replay: () => {
-      if (!result || startingRef.current) return;
+      if (!result || startingRef.current || !isValidStake(stake, Number(gameOf(session)?.pointCost ?? 0.5))) return;
       startingRef.current = true;
       setError("");
       playGame.mutate({ gameId: result.session.gameId, stake }, {
@@ -108,12 +111,12 @@ export default function GameLauncher({ l }: { l: Launcher }) {
           </div>
           <div style={{ color: "#9A94A8", fontSize: 14 }}>{session.gameName} · {session.pointsSpent} pts spent</div>
           {previousBest > 0 && !record && <div style={{ color: "#9A94A8", fontSize: 13, marginTop: 4 }}>Your best: <b style={{ color: "#FFD166" }}>{previousBest.toLocaleString()}</b></div>}
-          <StakeControl value={l.stake} minimum={Number(l.activeGame?.pointCost ?? 0.5)} onChange={l.setStake} disabled={l.starting} />
+          <StakeControl value={l.stake} inputValue={l.stakeInput} onInputChange={l.setStakeInput} minimum={Number(l.activeGame?.pointCost ?? 0.5)} onChange={l.setStake} disabled={l.starting} />
           <div style={{ color: "#FFD166", marginTop: 12 }}>Balance: {formatPoints(balance)} pts</div>
           {balance < l.stake && <p>Not enough points for this stake.</p>}
           {l.error && <p role="alert" style={{ color: "#FF7AA5" }}>{l.error}</p>}
           <div style={{ display: "flex", gap: 10, marginTop: 26 }}>
-            <button className="pl-btn" style={{ flex: 1 }} onClick={l.replay} disabled={l.starting || balance < l.stake}>{l.starting ? "Starting…" : "Play again"}</button>
+            <button className="pl-btn" style={{ flex: 1 }} onClick={l.replay} disabled={l.starting || !l.stakeValid || balance < l.stake}>{l.starting ? "Starting…" : "Play again"}</button>
             <button className="pl-btn ghost" onClick={l.quit} disabled={l.starting}>Exit game</button>
           </div>
         </div>
@@ -176,16 +179,16 @@ export default function GameLauncher({ l }: { l: Launcher }) {
           <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
             <p style={{ margin: 0, color: "#C9C3D8", fontSize: 14, lineHeight: 1.5 }}>{t.howTo}</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <Mini label="Entry" value={`${l.stake} pts`} color="#FFD166" />
+              <Mini label="Entry" value={Number.isFinite(l.stake) ? `${formatPoints(l.stake)} pts` : "—"} color="#FFD166" />
               <Mini label="Your balance" value={formatPoints(balance)} color={afford ? "#3DFF9A" : "#FF2D78"} />
               <Mini label="Your best" value={best ? best.toLocaleString() : "—"} color="#00D4FF" />
             </div>
-            <StakeControl value={l.stake} minimum={Number(g.pointCost)} onChange={l.setStake} disabled={l.starting} />
-            {!afford && <div style={{ color: "#FF2D78", fontSize: 13, fontWeight: 600 }}>Not enough points — ask your agent to top up your wallet.</div>}
+            <StakeControl value={l.stake} inputValue={l.stakeInput} onInputChange={l.setStakeInput} minimum={Number(g.pointCost)} onChange={l.setStake} disabled={l.starting} />
+            {l.stakeValid && !afford && <div style={{ color: "#FF2D78", fontSize: 13, fontWeight: 600 }}>Not enough points — ask your agent to top up your wallet.</div>}
             {l.error && <div style={{ color: "#FF2D78", fontSize: 13, fontWeight: 600 }}>{l.error}</div>}
             <div style={{ display: "flex", gap: 10 }}>
               <button className="pl-btn ghost" style={{ flex: 1 }} onClick={l.cancelPick} disabled={l.starting}>Cancel</button>
-              <button className="pl-btn" style={{ flex: 2 }} onClick={l.confirm} disabled={!afford || l.starting}>
+              <button className="pl-btn" style={{ flex: 2 }} onClick={l.confirm} disabled={!afford || !l.stakeValid || l.starting}>
                 {l.starting ? "Starting…" : "▶ Play now"}
               </button>
             </div>
@@ -207,10 +210,44 @@ function Mini({ label, value, color }: { label: string; value: string; color: st
   );
 }
 
-function StakeControl({ value, minimum, onChange, disabled }: { value: number; minimum: number; onChange: (value: number) => void; disabled: boolean }) {
-  return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 16 }}>
-    <button className="pl-btn ghost" aria-label="Decrease stake" disabled={disabled || value <= minimum} onClick={() => onChange(Math.max(minimum, value - 0.5))}>−</button>
-    <span>Stake: <b>{formatPoints(value)}</b> pts</span>
-    <button className="pl-btn ghost" aria-label="Increase stake" disabled={disabled || value >= 1000000} onClick={() => onChange(value + 0.5)}>+</button>
+function isValidStake(value: number, minimum: number): boolean {
+  return Number.isFinite(value) && value >= minimum && value <= 1000000 && Number.isInteger(value * 2);
+}
+
+function StakeControl({ value, inputValue, minimum, onChange, onInputChange, disabled }: {
+  value: number;
+  inputValue: string;
+  minimum: number;
+  onChange: (value: number) => void;
+  onInputChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const hintId = useId();
+  const valid = isValidStake(value, minimum);
+  const stepFrom = Number.isFinite(value) ? value : minimum;
+  return <div style={{ marginTop: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+      <button className="pl-btn ghost" style={{ width: 40, padding: "10px 0", flexShrink: 0 }} aria-label="Decrease stake" disabled={disabled || (valid && value <= minimum)} onClick={() => onChange(Math.min(1000000, Math.max(minimum, Math.ceil(stepFrom * 2) / 2 - 0.5)))}>−</button>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        Stake:
+        <input
+          aria-label="Stake points"
+          aria-invalid={!valid}
+          aria-describedby={valid ? undefined : hintId}
+          type="number"
+          inputMode="decimal"
+          min={minimum}
+          max={1000000}
+          step={0.5}
+          value={inputValue}
+          disabled={disabled}
+          onChange={(event) => onInputChange(event.target.value)}
+          style={{ width: 88, minWidth: 0, padding: "10px 6px", borderRadius: 10, border: `1px solid ${valid ? "rgba(255,209,102,.4)" : "#FF7AA5"}`, background: "rgba(255,255,255,.05)", color: "#FFD166", textAlign: "center", font: "inherit", fontWeight: 800 }}
+        />
+        pts
+      </label>
+      <button className="pl-btn ghost" style={{ width: 40, padding: "10px 0", flexShrink: 0 }} aria-label="Increase stake" disabled={disabled || (valid && value >= 1000000)} onClick={() => onChange(Math.max(minimum, Math.min(1000000, Math.floor(stepFrom * 2) / 2 + 0.5)))}>+</button>
+    </div>
+    {!valid && <div id={hintId} role="alert" style={{ color: "#FF7AA5", fontSize: 12, textAlign: "center", marginTop: 8 }}>Enter {formatPoints(minimum)}–1,000,000 points in steps of 0.5.</div>}
   </div>;
 }

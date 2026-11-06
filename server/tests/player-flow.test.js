@@ -64,6 +64,28 @@ test('player can adjust stakes, retry a failed result, replay, and resume withou
   await act(async () => root.render(React.createElement(QueryClientProvider, { client }, React.createElement(Harness))));
   await flush();
   await act(async () => launcher.pick(game));
+  const typeStake = async (value) => {
+    await act(async () => {
+      const input = document.querySelector('[aria-label="Stake points"]');
+      Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+  };
+  for (const value of ['', '0.25', '0.75', '1000001', '-1']) {
+    await typeStake(value);
+    assert.equal(launcher.stakeValid, false, `Invalid stake: ${value}`);
+    assert.ok([...document.querySelectorAll('button')].find((b) => b.textContent.includes('Play now')).disabled);
+    await act(async () => launcher.confirm());
+    assert.equal(stakes.length, 0);
+  }
+  await typeStake('2.5');
+  assert.equal(launcher.stake, 2.5);
+  assert.equal(launcher.stakeValid, true);
+  await act(async () => document.querySelector('[aria-label="Increase stake"]').click());
+  assert.equal(launcher.stake, 3);
+  await act(async () => document.querySelector('[aria-label="Decrease stake"]').click());
+  assert.equal(launcher.stake, 2.5);
+  await typeStake('0.5');
   const increase = document.querySelector('[aria-label="Increase stake"]');
   assert.ok(increase);
   await act(async () => increase.click());
@@ -83,17 +105,22 @@ test('player can adjust stakes, retry a failed result, replay, and resume withou
   assert.equal(balance, 5.5);
   assert.match(document.body.textContent, /Play again/);
   assert.doesNotMatch(document.body.textContent, /Back to lobby/);
+  await typeStake('');
+  assert.ok([...document.querySelectorAll('button')].find((b) => b.textContent === 'Play again').disabled);
+  await act(async () => launcher.replay());
+  assert.deepEqual(stakes, [1]);
+  await typeStake('1.5');
   await act(async () => { launcher.replay(); launcher.replay(); });
   await flush();
   assert.equal(launcher.session.id, 'round-2');
   assert.equal(launcher.result, null);
-  assert.deepEqual(stakes, [1, 1]);
+  assert.deepEqual(stakes, [1, 1.5]);
   await act(async () => launcher.quit());
   await flush();
   assert.equal(launcher.resumable.id, 'round-2');
   await act(async () => launcher.resume());
   assert.equal(launcher.session.id, 'round-2');
-  assert.equal(launcher.stake, 1);
+  assert.equal(launcher.stake, 1.5);
 });
 
 test('changing or clearing authentication also clears private query caches', async () => {
