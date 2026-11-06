@@ -72,7 +72,7 @@ function PlayerGameAccess({}: Props) {
   const handlePlay = () => {
     if (!selectedGame) return;
     setStartError("");
-    playGame.mutate(selectedGame.id, {
+    playGame.mutate({ gameId: selectedGame.id, stake: Number(selectedGame.pointCost) }, {
       onSuccess: (session) => {
         setActiveSession(session);
         setResumed(false);

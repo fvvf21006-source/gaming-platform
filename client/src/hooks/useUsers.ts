@@ -31,7 +31,7 @@ export function useCreateUser() {
   return useMutation({
     mutationFn: (payload: {
       username: string;
-      email: string;
+      email?: string;
       password: string;
       role: Role;
       fullName?: string;

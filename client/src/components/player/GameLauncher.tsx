@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Game, GameSession } from "../../api/client";
 import { formatPoints } from "../../utils/points";
 import { useCompleteGameSession, useGameHistory, usePlayGame } from "../../hooks/useGames";
@@ -17,48 +17,64 @@ import { bestScoreFor, themeFor } from "./gameMeta";
 export function useGameLauncher(games: Game[]) {
   const { data: historyData } = useGameHistory(true);
   const playGame = usePlayGame();
+  const startingRef = useRef(false);
   const completeSession = useCompleteGameSession();
 
   const [picked, setPicked] = useState<Game | null>(null);
   const [session, setSession] = useState<GameSession | null>(null);
   const [result, setResult] = useState<{ session: GameSession; previousBest: number } | null>(null);
   const [error, setError] = useState("");
+  const [stake, setStake] = useState(0.5);
+  const [pendingScore, setPendingScore] = useState<number | null>(null);
   const [dismissedResume, setDismissedResume] = useState(false);
 
   const history = historyData?.items ?? [];
-  const latest = history[0];
+  const latest = history.find((s) => s.status === "in_progress");
   const resumable = !dismissedResume && !session && latest?.status === "in_progress" ? latest : null;
 
   const gameOf = (s: GameSession | null) =>
     s ? games.find((g) => g.id === s.gameId) ?? ({ id: s.gameId, name: s.gameName ?? "Game", pointCost: s.pointsSpent } as Game) : null;
 
   return {
-    history, picked, session, result, error, resumable,
+    history, picked, session, result, error, resumable, stake, setStake, pendingScore,
     activeGame: gameOf(session),
-    pick: (g: Game) => { setError(""); setPicked(g); },
+    pick: (g: Game) => { setDismissedResume(false); setError(""); setStake(Number(g.pointCost)); setPicked(g); },
     cancelPick: () => setPicked(null),
     confirm: () => {
-      if (!picked) return;
+      if (!picked || startingRef.current) return;
+      startingRef.current = true;
       setError("");
-      playGame.mutate(picked.id, {
-        onSuccess: (s) => { setSession(s); setPicked(null); },
+      playGame.mutate({ gameId: picked.id, stake }, {
+        onSuccess: (s) => { setSession(s); setPicked(null); setResult(null); setPendingScore(null); },
         onError: (e: Error) => setError(e.message),
+        onSettled: () => { startingRef.current = false; },
+      });
+    },
+    replay: () => {
+      if (!result || startingRef.current) return;
+      startingRef.current = true;
+      setError("");
+      playGame.mutate({ gameId: result.session.gameId, stake }, {
+        onSuccess: (s) => { setSession(s); setResult(null); setPendingScore(null); },
+        onError: (e: Error) => setError(e.message),
+        onSettled: () => { startingRef.current = false; },
       });
     },
     starting: playGame.isPending,
-    resume: () => { if (resumable) setSession(resumable); },
+    resume: () => { if (resumable) { setSession(resumable); setStake(Number(resumable.pointsSpent)); setPendingScore(null); setError(""); } },
     dismissResume: () => setDismissedResume(true),
-    quit: () => { setSession(null); setDismissedResume(true); },
+    quit: () => { setSession(null); setResult(null); setError(""); setPendingScore(null); setDismissedResume(false); },
     finish: (score: number) => {
-      if (!session) return;
+      if (!session || completeSession.isPending) return;
+      setPendingScore(score);
+      setError("");
       const previousBest = bestScoreFor(history, session.gameId);
       completeSession.mutate(
         { sessionId: session.id, score },
-        { onSuccess: (s) => { setResult({ session: { ...s, gameName: s.gameName ?? session.gameName }, previousBest }); setSession(null); } }
+        { onSuccess: (s) => { setResult({ session: { ...s, gameName: s.gameName ?? session.gameName }, previousBest }); setPendingScore(null); }, onError: (e: Error) => setError(e.message) }
       );
     },
     finishing: completeSession.isPending,
-    closeResult: () => setResult(null),
   };
 }
 
@@ -92,8 +108,13 @@ export default function GameLauncher({ l }: { l: Launcher }) {
           </div>
           <div style={{ color: "#9A94A8", fontSize: 14 }}>{session.gameName} · {session.pointsSpent} pts spent</div>
           {previousBest > 0 && !record && <div style={{ color: "#9A94A8", fontSize: 13, marginTop: 4 }}>Your best: <b style={{ color: "#FFD166" }}>{previousBest.toLocaleString()}</b></div>}
+          <StakeControl value={l.stake} minimum={Number(l.activeGame?.pointCost ?? 0.5)} onChange={l.setStake} disabled={l.starting} />
+          <div style={{ color: "#FFD166", marginTop: 12 }}>Balance: {formatPoints(balance)} pts</div>
+          {balance < l.stake && <p>Not enough points for this stake.</p>}
+          {l.error && <p role="alert" style={{ color: "#FF7AA5" }}>{l.error}</p>}
           <div style={{ display: "flex", gap: 10, marginTop: 26 }}>
-            <button className="pl-btn ghost" style={{ flex: 1 }} onClick={l.closeResult}>Back to lobby</button>
+            <button className="pl-btn" style={{ flex: 1 }} onClick={l.replay} disabled={l.starting || balance < l.stake}>{l.starting ? "Starting…" : "Play again"}</button>
+            <button className="pl-btn ghost" onClick={l.quit} disabled={l.starting}>Exit game</button>
           </div>
         </div>
       </div>
@@ -116,15 +137,20 @@ export default function GameLauncher({ l }: { l: Launcher }) {
                 <div style={{ fontSize: 12, color: "#9A94A8" }}>{t.tagline}</div>
               </div>
             </div>
-            <button className="pl-btn ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={l.quit}>Exit</button>
+            {!["wheel", "slots", "mines", "crash"].includes(t.kind) && <button className="pl-btn ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={l.quit} disabled={l.finishing || l.pendingScore !== null}>Exit</button>}
           </div>
-          {l.finishing ? (
-            <div className="pl-glass" style={{ padding: 60, textAlign: "center", fontSize: 18, fontWeight: 700 }}>Saving your score…</div>
-          ) : t.kind === "wheel" ? <LuckyWheel {...casino} />
+          {l.error && l.pendingScore !== null && <div role="alert" className="pl-glass" style={{ padding: 20 }}>
+            <p>{l.error} Your result has not been saved yet.</p>
+            <button className="pl-btn" onClick={() => l.finish(l.pendingScore!)} disabled={l.finishing}>Retry saving result</button>
+          </div>}
+          {l.finishing && <div role="status" style={{ textAlign: "center" }}>Saving your result…</div>}
+          <div style={{ pointerEvents: l.pendingScore !== null ? "none" : undefined }} inert={l.pendingScore !== null}>
+          {t.kind === "wheel" ? <LuckyWheel {...casino} />
           : t.kind === "slots" ? <SlotMachine {...casino} />
           : t.kind === "mines" ? <MinesGame {...casino} />
           : t.kind === "crash" ? <CrashGame {...casino} />
           : t.kind === "target" ? <TargetBlitz {...props} /> : t.kind === "chain" ? <NumberChain {...props} /> : <ReflexGame {...props} />}
+          </div>
           <p style={{ textAlign: "center", fontSize: 12, color: "#7d778f", margin: 0 }}>
             Exiting now keeps this round open — you can pick it back up from the lobby.
           </p>
@@ -137,10 +163,10 @@ export default function GameLauncher({ l }: { l: Launcher }) {
   if (l.picked) {
     const g = l.picked;
     const t = themeFor(g.name);
-    const afford = balance >= g.pointCost;
+    const afford = balance >= l.stake;
     const best = bestScoreFor(l.history, g.id);
     return (
-      <div style={overlay} onClick={l.cancelPick}>
+      <div style={overlay} onClick={() => !l.starting && l.cancelPick()}>
         <div className="pl-glass pop-in" onClick={(e) => e.stopPropagation()} style={{ width: "min(460px, 100%)", overflow: "hidden" }}>
           <div style={{ background: t.gradient, padding: "34px 24px 26px", textAlign: "center", position: "relative" }}>
             <div className="float" style={{ fontSize: 76 }}>{t.emoji}</div>
@@ -150,14 +176,15 @@ export default function GameLauncher({ l }: { l: Launcher }) {
           <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
             <p style={{ margin: 0, color: "#C9C3D8", fontSize: 14, lineHeight: 1.5 }}>{t.howTo}</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <Mini label="Entry" value={`${g.pointCost} pts`} color="#FFD166" />
+              <Mini label="Entry" value={`${l.stake} pts`} color="#FFD166" />
               <Mini label="Your balance" value={formatPoints(balance)} color={afford ? "#3DFF9A" : "#FF2D78"} />
               <Mini label="Your best" value={best ? best.toLocaleString() : "—"} color="#00D4FF" />
             </div>
+            <StakeControl value={l.stake} minimum={Number(g.pointCost)} onChange={l.setStake} disabled={l.starting} />
             {!afford && <div style={{ color: "#FF2D78", fontSize: 13, fontWeight: 600 }}>Not enough points — ask your agent to top up your wallet.</div>}
             {l.error && <div style={{ color: "#FF2D78", fontSize: 13, fontWeight: 600 }}>{l.error}</div>}
             <div style={{ display: "flex", gap: 10 }}>
-              <button className="pl-btn ghost" style={{ flex: 1 }} onClick={l.cancelPick}>Cancel</button>
+              <button className="pl-btn ghost" style={{ flex: 1 }} onClick={l.cancelPick} disabled={l.starting}>Cancel</button>
               <button className="pl-btn" style={{ flex: 2 }} onClick={l.confirm} disabled={!afford || l.starting}>
                 {l.starting ? "Starting…" : "▶ Play now"}
               </button>
@@ -178,4 +205,12 @@ function Mini({ label, value, color }: { label: string; value: string; color: st
       <div className="font-mono-data" style={{ fontSize: 16, fontWeight: 800, color, marginTop: 2 }}>{value}</div>
     </div>
   );
+}
+
+function StakeControl({ value, minimum, onChange, disabled }: { value: number; minimum: number; onChange: (value: number) => void; disabled: boolean }) {
+  return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 16 }}>
+    <button className="pl-btn ghost" aria-label="Decrease stake" disabled={disabled || value <= minimum} onClick={() => onChange(Math.max(minimum, value - 0.5))}>−</button>
+    <span>Stake: <b>{formatPoints(value)}</b> pts</span>
+    <button className="pl-btn ghost" aria-label="Increase stake" disabled={disabled || value >= 1000000} onClick={() => onChange(value + 0.5)}>+</button>
+  </div>;
 }

@@ -101,11 +101,11 @@ async function payOutScore(client, { userId, gameId, score, performedBy }) {
     [score, userId]
   );
 
-  if (credit.rowCount === 0) return;
+  if (credit.rowCount === 0) throw new Error('Player wallet not found; payout was not recorded');
 
   const playerAfter = Number(credit.rows[0].balance);
   const houseId = await findHouseUserId(client);
-  if (!houseId) return;
+  if (!houseId) throw new Error('House account not found; payout was not recorded');
 
   const house = await client.query(`SELECT balance FROM wallets WHERE user_id = $1 FOR UPDATE`, [houseId]);
   const houseBefore = house.rows[0] ? Number(house.rows[0].balance) : 0;

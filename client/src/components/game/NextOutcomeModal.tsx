@@ -28,7 +28,7 @@ export default function NextOutcomeModal({ playerId, playerName, onClose, onDone
   const game = games.find((g) => g.id === gameId);
 
   const submit = () => {
-    if (score === null || !Number.isInteger(score) || score < 0) {
+    if (score === null || !Number.isFinite(score) || score < 0) {
       setError("Pick a result first.");
       return;
     }

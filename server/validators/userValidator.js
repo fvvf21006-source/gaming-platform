@@ -19,9 +19,10 @@ export const createUserValidationRules = [
     .isLength({ min: 3, max: 50 })
     .withMessage('username must be between 3 and 50 characters'),
   body('email')
+    .optional({ values: 'null' })
+    .isString().withMessage('email must be a string').bail()
     .trim()
-    .notEmpty()
-    .withMessage('email is required')
+    .if((value) => value !== '')
     .isEmail()
     .withMessage('email must be a valid email address'),
   body('password')
@@ -47,7 +48,7 @@ export const updateUserValidationRules = [
     .not()
     .exists()
     .withMessage('role cannot be changed through this endpoint'),
-  body('email').optional().trim().isEmail().withMessage('email must be a valid email address'),
+  body('email').optional({ values: 'null' }).isString().withMessage('email must be a string').bail().trim().if((value) => value !== '').isEmail().withMessage('email must be a valid email address'),
   body('status')
     .optional()
     .isIn(STATUSES)

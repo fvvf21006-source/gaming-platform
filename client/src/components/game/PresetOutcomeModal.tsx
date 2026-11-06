@@ -19,7 +19,7 @@ export default function PresetOutcomeModal({ session, onClose, onDone }: Props) 
   const player = session.playerUsername ?? session.userId.slice(0, 6);
 
   const submit = () => {
-    if (score === null || !Number.isInteger(score) || score < 0) {
+    if (score === null || !Number.isFinite(score) || score < 0) {
       setError("Pick a result first.");
       return;
     }

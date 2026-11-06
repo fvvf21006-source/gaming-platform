@@ -50,9 +50,10 @@ export function useGameHistory(enabled: boolean) {
 export function usePlayGame() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (gameId: string) => playGame(gameId),
+    mutationFn: ({ gameId, stake }: { gameId: string; stake: number }) => playGame(gameId, stake),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["games", "history"] });
       queryClient.invalidateQueries({ queryKey: ["games", "active-sessions"] });
     },
   });

@@ -18,7 +18,6 @@ export default function PlayerLobby({ user, games, launcher, onGoArcade }: Props
   const progress = computeProgress(launcher.history);
   const featured = games.find((g) => g.pointCost <= balance) ?? games[0];
   const ft = themeFor(featured?.name);
-  const recent = launcher.history.filter((s) => s.status === "completed").slice(0, 5);
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -97,29 +96,7 @@ export default function PlayerLobby({ user, games, launcher, onGoArcade }: Props
         </div>
       </section>
 
-      {/* Recent */}
-      <section>
-        <SectionTitle title="Your recent runs" />
-        {recent.length === 0 ? (
-          <div className="pl-glass" style={{ padding: 30, textAlign: "center", color: "#9A94A8" }}>Nothing here yet — your first game is one tap away. 🚀</div>
-        ) : (
-          <div className="pl-scroll-x">
-            {recent.map((s) => {
-              const t = themeFor(s.gameName);
-              return (
-                <div key={s.id} className="pl-glass" style={{ minWidth: 200, padding: 16, flexShrink: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 38, height: 38, borderRadius: 12, background: t.gradient, display: "grid", placeItems: "center", fontSize: 20 }}>{t.emoji}</span>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{s.gameName}</div>
-                  </div>
-                  <div className="font-mono-data" style={{ fontSize: 26, fontWeight: 800, color: "#FFD166", marginTop: 10 }}>{(s.score ?? 0).toLocaleString()}</div>
-                  <div style={{ fontSize: 12, color: "#9A94A8" }}>{new Date(s.completedAt ?? s.startedAt).toLocaleDateString()}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+
     </div>
   );
 }

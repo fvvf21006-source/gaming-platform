@@ -55,5 +55,5 @@ export function discreteMultipliers(kind: OutcomeKind): number[] | null {
 
 /** Points paid for a buy-in at a multiplier. Server and client must round identically. */
 export function payoutFor(pointCost: number, multiplier: number): number {
-  return Math.round(pointCost * multiplier);
+  return Math.round(pointCost * multiplier * 100) / 100;
 }

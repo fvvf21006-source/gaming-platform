@@ -35,7 +35,7 @@ function toPublicUser(user) {
   return {
     id: user.id,
     username: user.username,
-    email: user.email,
+    email: user.email ?? '',
     role: user.role,
     status: user.status,
     mustChangePassword: user.must_change_password,

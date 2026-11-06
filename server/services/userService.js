@@ -28,7 +28,7 @@ function toPublicUser(row) {
   return {
     id: row.id,
     username: row.username,
-    email: row.email,
+    email: row.email ?? '',
     role: row.role,
     status: row.status,
     balance: row.balance ?? null,
@@ -73,6 +73,7 @@ export async function createUser({
   fullName,
   displayName,
 }) {
+  email = email?.trim() || null;
   const expectedRole = nextRoleFor(requesterRole);
 
   if (!expectedRole) {
@@ -95,7 +96,7 @@ export async function createUser({
     throw conflict('username already exists');
   }
 
-  if (await userRepository.emailExists(email)) {
+  if (email && await userRepository.emailExists(email)) {
     throw conflict('email already exists');
   }
 
@@ -214,6 +215,8 @@ export async function updateUser(requesterId, requesterRole, targetId, updates) 
   if (updates.status !== undefined && updates.status !== target.status && isSelf) {
     throw forbidden('You cannot change your own account status');
   }
+
+  if (updates.email !== undefined) updates.email = updates.email?.trim() || null;
 
   if (updates.email !== undefined && updates.email !== target.email) {
     if (await userRepository.emailExists(updates.email, targetId)) {

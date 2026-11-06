@@ -109,7 +109,7 @@ export default function OutcomePicker({ gameName, pointCost, value, onChange }: 
     <div style={{ marginBottom: 14 }}>
       <label style={labelStyle}>{gameName ? "Final score" : "Points the next game should pay"}</label>
       <input
-        type="number" min={0} step={1}
+        type="number" min={0} step={0.01}
         value={freeScore}
         onChange={(e) => {
           setFreeScore(e.target.value);

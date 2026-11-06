@@ -3,6 +3,7 @@
 // that's walletService's job).
 
 import { body, query, validationResult } from 'express-validator';
+import { isPointAmount } from '../utils/points.js';
 
 export const transferValidationRules = [
   body('recipientId')
@@ -13,8 +14,8 @@ export const transferValidationRules = [
   body('amount')
     .notEmpty()
     .withMessage('amount is required')
-    .isInt({ gt: 0 })
-    .withMessage('amount must be a positive integer'),
+    .isFloat({ gt: 0 }).withMessage('amount must be positive').bail().toFloat()
+    .custom(isPointAmount).withMessage('amount must have at most two decimal places'),
 ];
 
 export const transactionsQueryValidationRules = [
@@ -39,12 +40,9 @@ export const adjustBalanceValidationRules = [
   // 'set' is an absolute target balance, so 0 is valid; 'add'/'remove'
   // are deltas, where 0 would be a meaningless no-op.
   body('amount').custom((value, { req }) => {
-    const isInteger = Number.isInteger(value);
-    const min = req.body.operation === 'set' ? 0 : 1;
-
-    if (!isInteger || value < min) {
+    if (!isPointAmount(value) || (req.body.operation !== 'set' && value <= 0)) {
       throw new Error(
-        req.body.operation === 'set' ? 'amount must be a non-negative integer' : 'amount must be a positive integer'
+        'amount must be a valid point amount with at most two decimal places'
       );
     }
 

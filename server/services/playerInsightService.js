@@ -139,7 +139,7 @@ export async function getPlayerOverview({ requesterId, requesterRole, playerId }
     player: {
       id: player.id,
       username: player.username,
-      email: player.email,
+      email: player.email ?? '',
       status: player.status,
       balance: player.balance === null ? null : n(player.balance),
       createdAt: player.created_at,

@@ -531,7 +531,7 @@ function UserDrawer({ user, parentName, onClose, onToggle, onReset, onSave, savi
     <>
           {editing ? (
             <form onSubmit={form.handleSubmit((d) => { setError(""); onSave(user.id, d, { onSuccess: () => setEditing(false), onError: setError }); })} style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-              <FormField label="Email" error={form.formState.errors.email?.message}><input type="email" style={fieldStyle()} {...form.register("email")} /></FormField>
+              <FormField label="Email (optional)" error={form.formState.errors.email?.message}><input type="email" style={fieldStyle()} {...form.register("email")} /></FormField>
               <FormField label="Full name"><input style={fieldStyle()} {...form.register("fullName")} /></FormField>
               <FormField label="Display name"><input style={fieldStyle()} {...form.register("displayName")} /></FormField>
               {error && <p style={{ color: "var(--neon-pink)", fontSize: 13, margin: 0 }}>{error}</p>}
@@ -650,7 +650,7 @@ function CreateUserWizard({ childRole, onClose, onCreate, isPending }: {
       <form onSubmit={handleSubmit(onSubmit)} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: step === 1 ? "flex" : "none", flexDirection: "column", gap: 14 }}>
           <FormField label="Username" error={errors.username?.message}><input {...register("username")} placeholder="e.g. alex_chen" style={fieldStyle()} autoFocus autoComplete="off" /></FormField>
-          <FormField label="Email" error={errors.email?.message}><input {...register("email")} type="email" placeholder="alex@example.com" style={fieldStyle()} autoComplete="off" /></FormField>
+          <FormField label="Email (optional)" error={errors.email?.message}><input {...register("email")} type="email" placeholder="alex@example.com" style={fieldStyle()} autoComplete="off" /></FormField>
           <FormField label="Password" error={errors.password?.message}>
             <div style={{ position: "relative" }}>
               <input {...register("password")} type={showPw ? "text" : "password"} placeholder="At least 8 characters" style={{ ...fieldStyle(), paddingRight: 60 }} autoComplete="new-password" />

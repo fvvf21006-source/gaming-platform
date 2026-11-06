@@ -18,6 +18,7 @@ export async function play(req, res, next) {
     const session = await gameService.playGame({
       userId: req.user.userId,
       gameId: req.params.id,
+      stake: req.body.stake,
     });
 
     res.status(201).json({ session });

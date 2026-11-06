@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
 import {
   gameIdParamValidationRules,
+  playGameValidationRules,
   sessionIdParamValidationRules,
   completeSessionValidationRules,
   alterSessionValidationRules,
@@ -42,6 +43,7 @@ router.post(
   authenticate,
   authorize(['player']),
   gameIdParamValidationRules,
+  playGameValidationRules,
   handleValidationErrors,
   gameController.play
 );

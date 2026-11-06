@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const createUserSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
-  email: z.string().email("Enter a valid email address"),
+  email: z.string().trim().pipe(z.string().email("Enter a valid email address").or(z.literal(""))).optional(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   fullName: z.string().optional(),
   displayName: z.string().optional(),
@@ -10,7 +10,7 @@ export const createUserSchema = z.object({
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const updateProfileSchema = z.object({
-  email: z.string().email("Enter a valid email address").optional(),
+  email: z.string().trim().pipe(z.string().email("Enter a valid email address").or(z.literal(""))).optional(),
   fullName: z.string().optional(),
   displayName: z.string().optional(),
 });

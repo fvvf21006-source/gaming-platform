@@ -3,10 +3,11 @@
 // ============================================================================
 
 import axios, { type AxiosInstance } from "axios";
+import { queryClient } from "../lib/queryClient";
 
 // ── CONFIGURATION & TOKEN MANAGEMENT ──
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const BASE_URL = import.meta.env?.VITE_API_BASE_URL || "http://localhost:5000";
 const TOKEN_KEY = "lucky-crown-token";
 
 export function getToken(): string | null {
@@ -14,12 +15,14 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string): void {
+  queryClient.clear();
   if (typeof window !== "undefined") {
     window.localStorage.setItem(TOKEN_KEY, token);
   }
 }
 
 export function clearToken(): void {
+  queryClient.clear();
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(TOKEN_KEY);
   }
@@ -271,7 +274,7 @@ export async function changePassword(
 
 export async function createUser(payload: {
   username: string;
-  email: string;
+  email?: string;
   password: string;
   role: Role;
   status?: string;
@@ -386,9 +389,10 @@ export async function getOnlinePlayers() {
   return body as ListResponse<OnlinePlayer>;
 }
 
-export async function playGame(gameId: string) {
+export async function playGame(gameId: string, stake?: number) {
   const body = await request(`/api/games/${gameId}/play`, {
     method: "POST",
+    body: JSON.stringify({ stake }),
   });
   return body.session as GameSession;
 }

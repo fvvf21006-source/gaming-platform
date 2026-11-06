@@ -9,6 +9,7 @@ import { createNotification } from './notificationService.js';
 import { logAction } from './auditService.js';
 import { isPresettableScore, nearestPresettableScore } from '../utils/casinoOutcomes.js';
 import { isEffectivelyFrozen } from './accountStatusService.js';
+import { isPointAmount } from '../utils/points.js';
 
 // Casino rounds report "points won", which the client computes. The highest
 // payout each game can legitimately produce is buy-in x this multiplier, so
@@ -22,6 +23,10 @@ const MAX_SCORE_MULTIPLIER = {
 };
 
 function assertScoreWithinLimit(game, pointsSpent, score) {
+  if (!isPointAmount(score)) throw badRequest('Score must be a non-negative number with at most two decimal places');
+  if (!isPresettableScore(game?.name, Number(pointsSpent), score)) {
+    throw badRequest('Score is not a possible result for this game and stake');
+  }
   const multiplier = MAX_SCORE_MULTIPLIER[game?.name];
 
   if (multiplier !== undefined && score > pointsSpent * multiplier) {
@@ -34,7 +39,7 @@ function toPublicGame(row) {
     id: row.id,
     name: row.name,
     description: row.description,
-    pointCost: row.point_cost,
+    pointCost: Number(row.point_cost),
     category: row.category,
   };
 }
@@ -46,8 +51,8 @@ function toPublicSession(row) {
     playerUsername: row.player_username,
     gameId: row.game_id,
     gameName: row.game_name,
-    pointsSpent: row.points_spent,
-    score: row.score,
+    pointsSpent: Number(row.points_spent),
+    score: row.score == null ? null : Number(row.score),
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -60,7 +65,7 @@ function toPublicSession(row) {
 // Only supervisor-facing responses include the preset; a player's own
 // session responses never do.
 function toSupervisorSession(row) {
-  return { ...toPublicSession(row), forcedScore: row.forced_score ?? null };
+  return { ...toPublicSession(row), forcedScore: row.forced_score == null ? null : Number(row.forced_score) };
 }
 
 /**
@@ -110,7 +115,7 @@ async function applyPendingNextOutcome({ userId, game, sessionId }) {
  * pattern walletService.transferPoints uses for BR-18.
  * @param {{userId: string, gameId: string}} input
  */
-export async function playGame({ userId, gameId }) {
+export async function playGame({ userId, gameId, stake }) {
   const player = await userRepository.findUserById(userId);
 
   if (!player) {
@@ -127,13 +132,18 @@ export async function playGame({ userId, gameId }) {
     throw notFound('Game not found');
   }
 
+  const pointCost = stake === undefined ? Number(game.point_cost) : Number(stake);
+  if (!Number.isFinite(pointCost) || pointCost < Number(game.point_cost) || pointCost > 1000000 || !Number.isInteger(pointCost * 2)) {
+    throw badRequest('Stake must meet the game minimum and increase in steps of 0.5 points');
+  }
+
   let result;
 
   try {
     result = await gameRepository.startGameSession({
       userId,
       gameId,
-      pointCost: game.point_cost,
+      pointCost,
     });
   } catch (err) {
     if (err.code === 'INSUFFICIENT_BALANCE') {
@@ -147,10 +157,10 @@ export async function playGame({ userId, gameId }) {
     action: 'game_started',
     entityType: 'game_session',
     entityId: result.session.id,
-    metadata: { game: game.name, cost: game.point_cost },
+    metadata: { game: game.name, cost: pointCost },
   });
 
-  await applyPendingNextOutcome({ userId, game, sessionId: result.session.id });
+  await applyPendingNextOutcome({ userId, game: { ...game, point_cost: pointCost }, sessionId: result.session.id });
 
   return {
     ...toPublicSession({ ...result.session, game_name: game.name, player_username: player.username }),
@@ -182,6 +192,11 @@ export async function completeSession({ userId, sessionId, score }) {
     return toPublicSession({ ...session, game_name: game?.name });
   }
 
+  if (session.status === 'completed') {
+    const game = await gameRepository.findGameById(session.game_id);
+    return toPublicSession({ ...session, game_name: game?.name });
+  }
+
   if (session.status !== 'in_progress') {
     throw conflict('Session is not in progress');
   }
@@ -194,13 +209,14 @@ export async function completeSession({ userId, sessionId, score }) {
   }
 
   // A supervisor's preset decides the result, whatever the client reports.
-  const finalScore = hasPreset ? session.forced_score : score;
+  const finalScore = Number(hasPreset ? session.forced_score : score);
+  assertScoreWithinLimit(game, session.points_spent, finalScore);
   const updated = await gameRepository.completeSession(sessionId, finalScore);
 
   if (!updated) {
     // Race condition: session was altered or completed right before update
     const freshSession = await gameRepository.findSessionById(sessionId);
-    if (freshSession?.is_altered) {
+    if (freshSession?.is_altered || freshSession?.status === 'completed') {
       const game = await gameRepository.findGameById(freshSession.game_id);
       return toPublicSession({ ...freshSession, game_name: game?.name });
     }
@@ -384,7 +400,7 @@ export async function getSessionOutcome({ userId, sessionId }) {
   }
 
   const active = session.status === 'in_progress';
-  return { forcedScore: active ? session.forced_score ?? null : null };
+  return { forcedScore: active && session.forced_score != null ? Number(session.forced_score) : null };
 }
 
 const SUPERVISOR_ROLES = ['super_admin', 'level_3'];
@@ -448,7 +464,7 @@ export async function presetNextOutcome({ requesterId, requesterRole, playerId, 
     playerUsername: player.username,
     gameId: pending.game_id,
     gameName: game?.name ?? null,
-    score: pending.score,
+    score: Number(pending.score),
   };
 }
 
@@ -498,7 +514,7 @@ export async function listNextOutcomes({ requesterId, requesterRole }) {
     playerUsername: row.player_username,
     gameId: row.game_id,
     gameName: row.game_name,
-    score: row.score,
+    score: row.score == null ? null : Number(row.score),
     createdAt: row.created_at,
   }));
 

@@ -36,7 +36,7 @@ export function isPresettableScore(gameName, pointCost, score) {
   const discrete = DISCRETE_OUTCOMES[gameName];
 
   if (discrete) {
-    return discrete.some((m) => Math.round(pointCost * m) === score);
+    return discrete.some((m) => Math.round(pointCost * m * 100) / 100 === score);
   }
 
   if (gameName === 'Crash Rocket') {
@@ -56,7 +56,7 @@ export function nearestPresettableScore(gameName, pointCost, score) {
   const discrete = DISCRETE_OUTCOMES[gameName];
 
   if (discrete) {
-    const options = [...new Set(discrete.map((m) => Math.round(pointCost * m)))];
+    const options = [...new Set(discrete.map((m) => Math.round(pointCost * m * 100) / 100))];
     return options.reduce((best, option) => {
       const better = Math.abs(option - score) < Math.abs(best - score);
       const tie = Math.abs(option - score) === Math.abs(best - score) && option < best;

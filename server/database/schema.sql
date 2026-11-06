@@ -318,7 +318,6 @@ ALTER TABLE users
 
 COMMENT ON COLUMN users.must_change_password IS 'Set true by an administrative password reset (Part 4); cleared by the user successfully changing their own password (Part 3). Does not block login by itself.';
 
-
 -- ==== 014_alter_wallet_transactions_audit_trail.sql ====
 -- 014_alter_wallet_transactions_audit_trail.sql
 -- Every points movement must record the previous balance and the
@@ -382,7 +381,6 @@ COMMENT ON COLUMN game_sessions.is_altered IS 'True if the game session was forc
 COMMENT ON COLUMN game_sessions.altered_by IS 'The user ID of the Level 3 user or administrator who altered the session.';
 COMMENT ON COLUMN game_sessions.alteration_reason IS 'Reason or description for the game alteration (e.g., Forced loss by supervisor).';
 
-
 -- ==== 017_add_users_last_seen_at.sql ====
 -- 017_add_users_last_seen_at.sql
 -- Presence tracking: the client sends a periodic heartbeat while a user is
@@ -417,3 +415,114 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user
 
 -- Online presence lookup
 CREATE INDEX IF NOT EXISTS idx_users_last_seen_at ON users (last_seen_at) WHERE last_seen_at IS NOT NULL;
+
+-- ==== 019_add_game_forced_outcome.sql ====
+-- 019_add_game_forced_outcome.sql
+-- Lets a Level 3 user (or Super Admin) preset the final score of a player's
+-- in-progress session. When set, completing the session records this score
+-- instead of whatever the client reports.
+
+ALTER TABLE game_sessions
+    ADD COLUMN forced_score INTEGER CHECK (forced_score >= 0),
+    ADD COLUMN forced_by UUID REFERENCES users(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN game_sessions.forced_score IS 'Score preset by a supervisor; recorded as the final score when the session completes.';
+COMMENT ON COLUMN game_sessions.forced_by IS 'The supervisor who preset forced_score.';
+
+-- ==== 020_add_game_ledger_types.sql ====
+-- 020_add_game_ledger_types.sql
+-- Game buy-ins move points from the player to the Super Admin house wallet and
+-- payouts move them back, so both need to be recorded in the immutable ledger.
+
+ALTER TABLE wallet_transactions
+    DROP CONSTRAINT chk_wallet_transactions_type;
+
+ALTER TABLE wallet_transactions
+    ADD CONSTRAINT chk_wallet_transactions_type
+    CHECK (transaction_type IN ('transfer', 'admin_add', 'admin_remove', 'admin_set', 'game_buy_in', 'game_payout'));
+
+COMMENT ON COLUMN wallet_transactions.transaction_type IS '''transfer'' for hierarchy transfers; ''admin_add''/''admin_remove''/''admin_set'' for administrative adjustments; ''game_buy_in'' (player to house) and ''game_payout'' (house to player) for game sessions.';
+
+-- Ledger and history can never be removed. wallet_transactions already rejects
+-- row UPDATE/DELETE (014); also reject TRUNCATE, and give audit_logs and
+-- game_sessions the same protection against deletion.
+CREATE TRIGGER trg_wallet_transactions_no_truncate
+    BEFORE TRUNCATE ON wallet_transactions
+    FOR EACH STATEMENT EXECUTE FUNCTION prevent_wallet_transaction_change();
+
+CREATE FUNCTION prevent_history_removal() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION '% is permanent history; rows cannot be deleted or truncated', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_audit_logs_no_delete
+    BEFORE DELETE ON audit_logs
+    FOR EACH ROW EXECUTE FUNCTION prevent_history_removal();
+
+CREATE TRIGGER trg_audit_logs_no_truncate
+    BEFORE TRUNCATE ON audit_logs
+    FOR EACH STATEMENT EXECUTE FUNCTION prevent_history_removal();
+
+CREATE TRIGGER trg_game_sessions_no_delete
+    BEFORE DELETE ON game_sessions
+    FOR EACH ROW EXECUTE FUNCTION prevent_history_removal();
+
+CREATE TRIGGER trg_game_sessions_no_truncate
+    BEFORE TRUNCATE ON game_sessions
+    FOR EACH STATEMENT EXECUTE FUNCTION prevent_history_removal();
+
+-- ==== 021_add_games_pays_out.sql ====
+-- 021_add_games_pays_out.sql
+-- Casino games report "points won" as their score, so that score is paid to the
+-- player at the end of a round. Arcade games report a plain game score that is
+-- not a point amount, so they pay nothing back (the buy-in stays with the house).
+
+ALTER TABLE games
+    ADD COLUMN pays_out BOOLEAN NOT NULL DEFAULT false;
+
+UPDATE games
+   SET pays_out = true
+ WHERE name IN ('Lucky Wheel', 'Slot Machine', 'Mines Field', 'Crash Rocket');
+
+COMMENT ON COLUMN games.pays_out IS 'True when a completed session''s score is a number of points paid to the player (casino games); false when the score is just a score (arcade games).';
+
+-- ==== 022_create_player_next_outcomes.sql ====
+-- 022_create_player_next_outcomes.sql
+-- A supervisor can preset the result of a player's NEXT game before it starts.
+-- The row is claimed (and deleted) when the player starts a matching game, at
+-- which point it becomes that session's forced_score (see migration 019).
+-- game_id NULL means "whichever game the player starts next".
+
+CREATE TABLE player_next_outcomes (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id    UUID REFERENCES games(id) ON DELETE CASCADE,
+    score      INTEGER NOT NULL,
+    set_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_player_next_outcomes_user UNIQUE (user_id),
+    CONSTRAINT chk_player_next_outcomes_score CHECK (score >= 0)
+);
+
+COMMENT ON TABLE player_next_outcomes IS 'At most one pending preset per player: the score their next (matching) game session will end on.';
+
+-- ==== 023_fractional_game_points.sql ====
+-- Keep historical balances and ledger entries while allowing fractional stakes/payouts.
+ALTER TABLE games ALTER COLUMN point_cost TYPE NUMERIC(21,2);
+ALTER TABLE game_sessions
+  ALTER COLUMN points_spent TYPE NUMERIC(21,2),
+  ALTER COLUMN score TYPE NUMERIC(21,2),
+  ALTER COLUMN forced_score TYPE NUMERIC(21,2);
+ALTER TABLE player_next_outcomes ALTER COLUMN score TYPE NUMERIC(21,2);
+ALTER TABLE wallets ALTER COLUMN balance TYPE NUMERIC(21,2);
+ALTER TABLE wallet_transactions
+  ALTER COLUMN amount TYPE NUMERIC(21,2),
+  ALTER COLUMN sender_balance_before TYPE NUMERIC(21,2),
+  ALTER COLUMN sender_balance_after TYPE NUMERIC(21,2),
+  ALTER COLUMN recipient_balance_before TYPE NUMERIC(21,2),
+  ALTER COLUMN recipient_balance_after TYPE NUMERIC(21,2);
+UPDATE games SET point_cost = 0.5;
+UPDATE games SET pays_out = TRUE WHERE name IN ('Lucky Wheel', 'Slot Machine', 'Mines Field', 'Crash Rocket');
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;

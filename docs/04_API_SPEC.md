@@ -46,7 +46,7 @@ This document describes the expected REST API structure by module. It does not d
 - **Purpose:** Create a new account exactly one tier beneath the caller. Creates the user's profile and wallet in the same transaction.
 - **Method:** POST
 - **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
-- **Expected Request:** `{ username, email, password, role, status?, fullName?, displayName? }` — `role` must equal the caller's next tier down (e.g. Level 1 must pass `"level_2"`); `status` defaults to `"active"`.
+- **Expected Request:** `{ username, email?, password, role, status?, fullName?, displayName? }` — `role` must equal the caller's next tier down (e.g. Level 1 must pass `"level_2"`); `status` defaults to `"active"`.
 - **Expected Response:** `{ user: { id, username, email, role, status, createdBy, createdAt, updatedAt, profile: { fullName, displayName, avatarUrl } } }`
 - **Possible Errors:** 400 invalid input, 401 unauthorized, 403 role not permitted to create this tier, 409 username or email already taken
 
@@ -114,7 +114,7 @@ This document describes the expected REST API structure by module. It does not d
 - **Purpose:** Transfer points to an account the caller directly created (one hierarchy tier down, their own child — not any user at that tier, and not a more distant descendant). **Super Admin transfers are unlimited** — Super Admin has no wallet and no balance check applies; `senderBalanceAfter` is `null` in the response for these transfers, since there is no real balance to report. Every other role's balance check is unchanged.
 - **Method:** POST
 - **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
-- **Expected Request:** `{ recipientId, amount }` — `amount` must be a positive integer
+- **Expected Request:** `{ recipientId, amount }` — `amount` must be positive with at most two decimal places
 - **Expected Response:** `{ transaction: { id, senderId, recipientId, amount, senderBalanceAfter, recipientBalanceAfter, transactionType, createdAt } }` — `transactionType` is `"transfer"` for every row this endpoint creates, including Super Admin's unlimited ones
 - **Possible Errors:** 400 invalid `recipientId`/`amount`, 401 unauthorized, 403 sender is a Player, sender or recipient frozen, self-transfer, or recipient not the sender's own child, 404 sender or recipient not found, 409 insufficient balance (never for Super Admin)
 
@@ -122,7 +122,7 @@ This document describes the expected REST API structure by module. It does not d
 - **Purpose:** Administratively add, remove, or set a user's balance, with a required reason. Not a hierarchy transfer — Super Admin may adjust anyone; Level 1–3 may only adjust someone in their own hierarchy (self or any descendant, not just a direct child).
 - **Method:** POST
 - **Authentication:** Required (Super Admin, Level 1, Level 2, or Level 3 — not Player)
-- **Expected Request:** `{ userId, operation: "add"|"remove"|"set", amount, reason }` — `amount` must be a positive integer for `add`/`remove`, a non-negative integer for `set`; `reason` is required, max 500 characters
+- **Expected Request:** `{ userId, operation: "add"|"remove"|"set", amount, reason }` — `amount` must be positive for `add`/`remove`, non-negative for `set`, with at most two decimal places; `reason` is required, max 500 characters
 - **Expected Response:** `{ transaction: { ... } | null, oldBalance, newBalance }` — `transaction` is `null` only when a `set` operation didn't actually change the balance (no `wallet_transactions` row is written for a true no-op)
 - **Possible Errors:** 400 invalid input, 401 unauthorized, 403 target is Super Admin, target outside caller's hierarchy, or caller is a Player, 404 user or wallet not found, 409 adjustment would make the balance negative
 
@@ -147,10 +147,10 @@ This document describes the expected REST API structure by module. It does not d
 - **Possible Errors:** 401 unauthorized, 403 non-Player role
 
 ### POST /api/games/:id/play
-- **Purpose:** Start a game session; deducts the game's point cost from the caller's wallet.
+- **Purpose:** Start a game session; deducts the selected stake from the caller's wallet.
 - **Method:** POST
 - **Authentication:** Required (Player only)
-- **Expected Request:** none
+- **Expected Request:** `{ stake? }` — defaults to the game minimum; at least 0.5 points, at least the catalog minimum, at most 1,000,000, in steps of 0.5
 - **Expected Response:** `{ session: { id, userId, gameId, gameName, pointsSpent, score, status, startedAt, completedAt, remainingBalance } }`
 - **Possible Errors:** 400 invalid `id`, 401 unauthorized, 403 non-Player role or frozen account, 404 game not found or inactive, 409 insufficient balance
 
@@ -158,9 +158,9 @@ This document describes the expected REST API structure by module. It does not d
 - **Purpose:** Record the result of a completed game session.
 - **Method:** POST
 - **Authentication:** Required (Player, own session only)
-- **Expected Request:** `{ score }` — must be a non-negative integer
+- **Expected Request:** `{ score }` — must be non-negative with at most two decimal places and valid for the game and stake
 - **Expected Response:** `{ session: { id, userId, gameId, pointsSpent, score, status, startedAt, completedAt } }`
-- **Possible Errors:** 400 invalid `sessionId`/`score`, 401 unauthorized, 403 not own session, 404 session not found, 409 session already completed or abandoned
+- **Possible Errors:** 400 invalid `sessionId`/`score`, 401 unauthorized, 403 not own session, 404 session not found, 409 session abandoned; retrying completion returns the already-recorded result without another payout
 
 ### GET /api/games/history
 - **Purpose:** View the caller's own gameplay history, newest first.

@@ -191,7 +191,7 @@ export default function WalletPanel({ currentUser }: Props) {
                   )}
                 </Field>
                 <Field label="Amount" error={transferForm.formState.errors.amount?.message}>
-                  <input type="number" min={1} step={1} placeholder="0" className="wl-input wl-amount" {...transferForm.register("amount")} />
+                  <input type="number" min={0.01} step={0.01} placeholder="0" className="wl-input wl-amount" {...transferForm.register("amount")} />
                   <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                     {QUICK_AMOUNTS.map((n) => (
                       <button key={n} type="button" className="wl-chip" onClick={() => transferForm.setValue("amount", n as never, { shouldValidate: true })}>+{n}</button>
@@ -232,7 +232,7 @@ export default function WalletPanel({ currentUser }: Props) {
                   </div>
                   <div style={{ flex: 1 }}>
                     <Field label="Amount" error={adjustForm.formState.errors.amount?.message}>
-                      <input type="number" min={0} step={1} placeholder="0" className="wl-input wl-amount" {...adjustForm.register("amount")} />
+                      <input type="number" min={0} step={0.01} placeholder="0" className="wl-input wl-amount" {...adjustForm.register("amount")} />
                     </Field>
                   </div>
                 </div>
