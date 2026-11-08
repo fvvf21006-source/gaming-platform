@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import type { Game, GameSession } from "../../api/client";
 import { formatPoints } from "../../utils/points";
 import { useCompleteGameSession, useGameHistory, usePlayGame } from "../../hooks/useGames";
@@ -10,14 +10,15 @@ import LuckyWheel from "../game/LuckyWheel";
 import SlotMachine from "../game/SlotMachine";
 import MinesGame from "../game/MinesGame";
 import CrashGame from "../game/CrashGame";
-import Confetti from "./Confetti";
 import { bestScoreFor, themeFor } from "./gameMeta";
 
 /** Owns the whole pick → confirm → play → result flow so Lobby and Arcade share it. */
-export function useGameLauncher(games: Game[]) {
+export function useGameLauncher(games: Game[], onEnter?: () => void) {
   const { data: historyData } = useGameHistory(true);
   const playGame = usePlayGame();
   const startingRef = useRef(false);
+  const viewVersion = useRef(0);
+  const roundVersion = viewVersion.current;
   const completeSession = useCompleteGameSession();
 
   const [picked, setPicked] = useState<Game | null>(null);
@@ -37,45 +38,74 @@ export function useGameLauncher(games: Game[]) {
   const gameOf = (s: GameSession | null) =>
     s ? games.find((g) => g.id === s.gameId) ?? ({ id: s.gameId, name: s.gameName ?? "Game", pointCost: s.pointsSpent } as Game) : null;
 
+  const activeGame = gameOf(session);
+  const stakeValid = isValidStake(stake, Number(picked?.pointCost ?? activeGame?.pointCost ?? 0.5));
+
+  const startRound = (game: Game, entering: boolean) => {
+    if (startingRef.current || !stakeValid) return;
+    startingRef.current = true;
+    const version = viewVersion.current;
+    setError("");
+    playGame.mutate({ gameId: game.id, stake }, {
+      onSuccess: (nextSession) => {
+        if (version !== viewVersion.current) return;
+        viewVersion.current += 1;
+        setSession(nextSession);
+        setPicked(null);
+        setResult(null);
+        setPendingScore(null);
+        if (entering) onEnter?.();
+      },
+      onError: (err) => {
+        if (version === viewVersion.current) setError(err.message);
+      },
+      onSettled: () => { startingRef.current = false; },
+    });
+  };
+
+  const quit = useCallback(() => {
+    viewVersion.current += 1;
+    setSession(null);
+    setPicked(null);
+    setResult(null);
+    setError("");
+    setPendingScore(null);
+    setDismissedResume(false);
+  }, []);
+
   return {
     history, picked, session, result, error, resumable, stake, setStake, stakeInput, setStakeInput, pendingScore,
-    stakeValid: isValidStake(stake, Number(picked?.pointCost ?? gameOf(session)?.pointCost ?? 0.5)),
-    activeGame: gameOf(session),
+    stakeValid, activeGame, quit,
     pick: (g: Game) => { setDismissedResume(false); setError(""); setStake(Number(g.pointCost)); setPicked(g); },
     cancelPick: () => setPicked(null),
-    confirm: () => {
-      if (!picked || startingRef.current || !isValidStake(stake, Number(picked.pointCost))) return;
-      startingRef.current = true;
-      setError("");
-      playGame.mutate({ gameId: picked.id, stake }, {
-        onSuccess: (s) => { setSession(s); setPicked(null); setResult(null); setPendingScore(null); },
-        onError: (e: Error) => setError(e.message),
-        onSettled: () => { startingRef.current = false; },
-      });
-    },
-    replay: () => {
-      if (!result || startingRef.current || !isValidStake(stake, Number(gameOf(session)?.pointCost ?? 0.5))) return;
-      startingRef.current = true;
-      setError("");
-      playGame.mutate({ gameId: result.session.gameId, stake }, {
-        onSuccess: (s) => { setSession(s); setResult(null); setPendingScore(null); },
-        onError: (e: Error) => setError(e.message),
-        onSettled: () => { startingRef.current = false; },
-      });
-    },
+    confirm: () => { if (picked) startRound(picked, true); },
+    replay: () => { if (result && activeGame) startRound(activeGame, false); },
     starting: playGame.isPending,
-    resume: () => { if (resumable) { setSession(resumable); setStake(Number(resumable.pointsSpent)); setPendingScore(null); setError(""); } },
+    resume: () => {
+      if (!resumable) return;
+      viewVersion.current += 1;
+      setSession(resumable);
+      setStake(Number(resumable.pointsSpent));
+      setPendingScore(null);
+      setError("");
+      onEnter?.();
+    },
     dismissResume: () => setDismissedResume(true),
-    quit: () => { setSession(null); setResult(null); setError(""); setPendingScore(null); setDismissedResume(false); },
     finish: (score: number) => {
-      if (!session || completeSession.isPending) return;
+      if (!session || result || completeSession.isPending || roundVersion !== viewVersion.current) return;
       setPendingScore(score);
       setError("");
       const previousBest = bestScoreFor(history, session.gameId);
-      completeSession.mutate(
-        { sessionId: session.id, score },
-        { onSuccess: (s) => { setResult({ session: { ...s, gameName: s.gameName ?? session.gameName }, previousBest }); setPendingScore(null); }, onError: (e: Error) => setError(e.message) }
-      );
+      completeSession.mutate({ sessionId: session.id, score }, {
+        onSuccess: (saved) => {
+          if (roundVersion !== viewVersion.current) return;
+          setResult({ session: saved, previousBest });
+          setPendingScore(null);
+        },
+        onError: (err) => {
+          if (roundVersion === viewVersion.current) setError(err.message);
+        },
+      });
     },
     finishing: completeSession.isPending,
   };
@@ -92,74 +122,8 @@ export default function GameLauncher({ l }: { l: Launcher }) {
   const { data: wallet } = useWallet(true);
   const balance = Number(wallet?.balance ?? 0);
 
-  // ── Result screen ──
-  if (l.result) {
-    const { session, previousBest } = l.result;
-    const score = session.score ?? 0;
-    const record = score > 0 && score > previousBest;
-    const t = themeFor(session.gameName);
-    return (
-      <div style={overlay}>
-        {score > 0 && <Confetti count={record ? 110 : 60} />}
-        <div className="pl-glass pop-in" style={{ width: "min(440px, 100%)", padding: "34px 28px", textAlign: "center", borderColor: "rgba(255,209,102,.35)" }}>
-          <div style={{ fontSize: 64 }} className="float">{record ? "🏆" : score > 0 ? t.emoji : "😅"}</div>
-          <div style={{ fontSize: 13, letterSpacing: ".2em", color: record ? "#FFD166" : "#9A94A8", fontWeight: 800, marginTop: 6 }}>
-            {record ? "NEW PERSONAL BEST!" : score > 0 ? "NICE RUN" : "BETTER LUCK NEXT TIME"}
-          </div>
-          <div className="font-mono-data shine" style={{ fontSize: 66, fontWeight: 800, lineHeight: 1.1, margin: "8px 0", backgroundImage: "linear-gradient(90deg,#FFD166,#fff,#FFD166)", WebkitBackgroundClip: "text", color: "transparent" }}>
-            {score.toLocaleString()}
-          </div>
-          <div style={{ color: "#9A94A8", fontSize: 14 }}>{session.gameName} · {session.pointsSpent} pts spent</div>
-          {previousBest > 0 && !record && <div style={{ color: "#9A94A8", fontSize: 13, marginTop: 4 }}>Your best: <b style={{ color: "#FFD166" }}>{previousBest.toLocaleString()}</b></div>}
-          <StakeControl value={l.stake} inputValue={l.stakeInput} onInputChange={l.setStakeInput} minimum={Number(l.activeGame?.pointCost ?? 0.5)} onChange={l.setStake} disabled={l.starting} />
-          <div style={{ color: "#FFD166", marginTop: 12 }}>Balance: {formatPoints(balance)} pts</div>
-          {balance < l.stake && <p>Not enough points for this stake.</p>}
-          {l.error && <p role="alert" style={{ color: "#FF7AA5" }}>{l.error}</p>}
-          <div style={{ display: "flex", gap: 10, marginTop: 26 }}>
-            <button className="pl-btn" style={{ flex: 1 }} onClick={l.replay} disabled={l.starting || !l.stakeValid || balance < l.stake}>{l.starting ? "Starting…" : "Play again"}</button>
-            <button className="pl-btn ghost" onClick={l.quit} disabled={l.starting}>Exit game</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Live game ──
   if (l.session && l.activeGame) {
-    const t = themeFor(l.activeGame.name);
-    const props = { onFinish: l.finish };
-    const casino = { sessionId: l.session.id, pointCost: l.session.pointsSpent, onComplete: l.finish, onCancel: l.quit };
-    return (
-      <div style={{ ...overlay, placeItems: "start center", background: "rgba(7,7,13,.97)" }}>
-        <div style={{ width: "min(720px, 100%)", display: "flex", flexDirection: "column", gap: 18, paddingTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: t.gradient, display: "grid", placeItems: "center", fontSize: 24 }}>{t.emoji}</div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 20 }}>{l.activeGame.name}</div>
-                <div style={{ fontSize: 12, color: "#9A94A8" }}>{t.tagline}</div>
-              </div>
-            </div>
-            {!["wheel", "slots", "mines", "crash"].includes(t.kind) && <button className="pl-btn ghost" style={{ padding: "10px 16px", fontSize: 13 }} onClick={l.quit} disabled={l.finishing || l.pendingScore !== null}>Exit</button>}
-          </div>
-          {l.error && l.pendingScore !== null && <div role="alert" className="pl-glass" style={{ padding: 20 }}>
-            <p>{l.error} Your result has not been saved yet.</p>
-            <button className="pl-btn" onClick={() => l.finish(l.pendingScore!)} disabled={l.finishing}>Retry saving result</button>
-          </div>}
-          {l.finishing && <div role="status" style={{ textAlign: "center" }}>Saving your result…</div>}
-          <div style={{ pointerEvents: l.pendingScore !== null ? "none" : undefined }} inert={l.pendingScore !== null}>
-          {t.kind === "wheel" ? <LuckyWheel {...casino} />
-          : t.kind === "slots" ? <SlotMachine {...casino} />
-          : t.kind === "mines" ? <MinesGame {...casino} />
-          : t.kind === "crash" ? <CrashGame {...casino} />
-          : t.kind === "target" ? <TargetBlitz {...props} /> : t.kind === "chain" ? <NumberChain {...props} /> : <ReflexGame {...props} />}
-          </div>
-          <p style={{ textAlign: "center", fontSize: 12, color: "#7d778f", margin: 0 }}>
-            Exiting now keeps this round open — you can pick it back up from the lobby.
-          </p>
-        </div>
-      </div>
-    );
+    return <ActiveRound key={l.session.id} l={l} game={l.activeGame} session={l.session} balance={balance} />;
   }
 
   // ── Confirm modal ──
@@ -199,6 +163,57 @@ export default function GameLauncher({ l }: { l: Launcher }) {
   }
 
   return null;
+}
+
+function ActiveRound({ l, game, session, balance }: { l: Launcher; game: Game; session: GameSession; balance: number }) {
+  const theme = themeFor(game.name);
+  const [flightEnded, setFlightEnded] = useState(false);
+  const canStartNext = l.result && (theme.kind !== "crash" || flightEnded);
+  const casino = { sessionId: session.id, pointCost: session.pointsSpent, onComplete: l.finish };
+  const score = l.result?.session.score ?? 0;
+  const record = l.result && score > 0 && score > l.result.previousBest;
+
+  return (
+    <div style={{ ...overlay, placeItems: "start center", background: "rgba(7,7,13,.97)" }}>
+      <div style={{ width: "min(720px, 100%)", display: "flex", flexDirection: "column", gap: 18 }}>
+        <header style={{ position: "sticky", top: 0, zIndex: 1, background: "#0c0b14", borderRadius: 14, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 24 }} aria-hidden="true">{theme.emoji}</span>
+            <span style={{ fontWeight: 800, fontSize: 20 }}>{game.name}</span>
+          </div>
+          <span className="font-mono-data" aria-live="polite" style={{ color: "#FFD166", fontWeight: 800 }}>
+            Balance: {formatPoints(balance)} pts
+          </span>
+        </header>
+
+        <div inert={theme.kind !== "crash" && (l.pendingScore !== null || l.result !== null)}>
+          {theme.kind === "wheel" ? <LuckyWheel {...casino} />
+          : theme.kind === "slots" ? <SlotMachine {...casino} />
+          : theme.kind === "mines" ? <MinesGame {...casino} />
+          : theme.kind === "crash" ? <CrashGame {...casino} onFlightEnd={() => setFlightEnded(true)} />
+          : theme.kind === "target" ? <TargetBlitz onFinish={l.finish} />
+          : theme.kind === "chain" ? <NumberChain onFinish={l.finish} /> : <ReflexGame onFinish={l.finish} />}
+        </div>
+        {l.finishing && <div role="status" style={{ textAlign: "center" }}>Saving your result…</div>}
+        {l.error && <div role="alert" className="pl-glass" style={{ padding: 16 }}>
+          <p>{l.error}</p>
+          {l.pendingScore !== null && <button className="pl-btn" onClick={() => l.finish(l.pendingScore!)} disabled={l.finishing}>Retry saving result</button>}
+        </div>}
+        {canStartNext && (
+          <section className="pl-glass" style={{ padding: 18, textAlign: "center" }} aria-label="Next round">
+            <p style={{ margin: 0, fontWeight: 700 }}>
+              {record ? "New personal best · " : ""}{formatPoints(score)} {["wheel", "slots", "mines", "crash"].includes(theme.kind) ? "pts paid out" : "score"}
+            </p>
+            <StakeControl value={l.stake} inputValue={l.stakeInput} onInputChange={l.setStakeInput} minimum={Number(game.pointCost)} onChange={l.setStake} disabled={l.starting} />
+            {l.stakeValid && balance < l.stake && <p>Not enough points for this stake.</p>}
+            <button className="pl-btn" style={{ marginTop: 14 }} onClick={l.replay} disabled={l.starting || !l.stakeValid || balance < l.stake}>
+              {l.starting ? "Starting…" : "Start next round"}
+            </button>
+          </section>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Mini({ label, value, color }: { label: string; value: string; color: string }) {

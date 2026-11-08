@@ -9,7 +9,6 @@ interface Props {
   sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
-  onCancel: () => void;
 }
 
 interface Symbol {
@@ -64,7 +63,7 @@ function payoutFor([a, b, c]: Symbol[]): { multiplier: number; label: string } {
   return { multiplier: 0, label: "No match" };
 }
 
-export default function SlotMachine({ sessionId, pointCost, onComplete, onCancel }: Props) {
+export default function SlotMachine({ sessionId, pointCost, onComplete }: Props) {
   const [reels, setReels] = useState(["💎", "7️⃣", "🍒"]);
   const [stopped, setStopped] = useState([true, true, true]);
   const [spinning, setSpinning] = useState(false);
@@ -161,13 +160,6 @@ export default function SlotMachine({ sessionId, pointCost, onComplete, onCancel
       </div>
 
       <div className="flex items-center gap-4 mt-3 w-full">
-        <button
-          onClick={onCancel}
-          disabled={spinning || Boolean(result)}
-          className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors disabled:opacity-50"
-        >
-          Exit
-        </button>
         <button
           onClick={spin}
           disabled={spinning || Boolean(result)}

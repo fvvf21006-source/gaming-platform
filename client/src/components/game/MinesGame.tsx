@@ -16,7 +16,6 @@ interface Props {
   sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
-  onCancel: () => void;
 }
 
 /** `count` distinct tiles chosen at random, never including any in `exclude`. */
@@ -31,7 +30,7 @@ function pickTiles(count: number, exclude: Set<number>): number[] {
 
 type Phase = "playing" | "lost" | "cashed";
 
-export default function MinesGame({ sessionId, pointCost, onComplete, onCancel }: Props) {
+export default function MinesGame({ sessionId, pointCost, onComplete }: Props) {
   const [mines, setMines] = useState<Set<number>>(() => new Set(pickTiles(MINES_COUNT, new Set())));
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [phase, setPhase] = useState<Phase>("playing");
@@ -155,14 +154,6 @@ export default function MinesGame({ sessionId, pointCost, onComplete, onCancel }
       </div>
 
       <div className="flex items-center gap-3 mt-2 w-full">
-        <button
-          onClick={onCancel}
-          disabled={over || revealed.size > 0}
-          title={revealed.size > 0 ? "Cash out to finish this round" : undefined}
-          className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors disabled:opacity-50"
-        >
-          Exit
-        </button>
         <button
           onClick={cashOut}
           disabled={over || busy || revealed.size === 0}

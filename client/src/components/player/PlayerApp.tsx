@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { AuthUser } from "../../api/client";
 import { formatPoints } from "../../utils/points";
@@ -27,7 +27,8 @@ const TABS = [
 
 export default function PlayerApp({ user, onLogout, onUserUpdated }: Props) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { key, pathname, search, state } = useLocation();
+  const gameOpen = state?.playerGame === true;
   const { data: gamesData } = useGames(true);
   const { data: wallet } = useWallet(true);
   const { data: notifData } = useNotifications(true);
@@ -35,7 +36,14 @@ export default function PlayerApp({ user, onLogout, onUserUpdated }: Props) {
   const [bellOpen, setBellOpen] = useState(false);
 
   const games = gamesData?.items ?? [];
-  const launcher = useGameLauncher(games);
+  const launcher = useGameLauncher(games, () => {
+    if (!gameOpen) navigate({ pathname, search }, { state: { playerGame: true } });
+  });
+  const { quit } = launcher;
+  useEffect(() => {
+    if (!gameOpen) quit();
+  }, [gameOpen, key, quit]);
+  const overlayOpen = Boolean(launcher.session || launcher.picked);
   const progress = computeProgress(launcher.history);
   const notifs = notifData?.items ?? [];
   const unread = notifs.filter((n) => !n.isRead).length;
@@ -57,7 +65,7 @@ export default function PlayerApp({ user, onLogout, onUserUpdated }: Props) {
 
   return (
     <div className="pl-bg" style={{ color: "#EDE8D8", fontFamily: "'Outfit',sans-serif" }}>
-      <header style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(9,8,18,.75)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+      <header inert={overlayOpen} style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(9,8,18,.75)", backdropFilter: "blur(16px)", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
         <div style={{ maxWidth: 1180, margin: "0 auto", padding: "12px 20px", display: "flex", alignItems: "center", gap: 18 }}>
           <button onClick={() => navigate("/lobby")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, color: "#fff" }}>
             <span style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg,#FFD166,#FF2D78)", display: "grid", placeItems: "center", fontSize: 20 }}>👑</span>
@@ -99,7 +107,7 @@ export default function PlayerApp({ user, onLogout, onUserUpdated }: Props) {
         </div>
       </header>
 
-      <main className="pl-main" onClick={() => bellOpen && setBellOpen(false)}>
+      <main inert={overlayOpen} className="pl-main" onClick={() => bellOpen && setBellOpen(false)}>
         <Routes>
           <Route path="/" element={<Navigate to="/lobby" replace />} />
           <Route path="/dashboard" element={<Navigate to="/lobby" replace />} />
@@ -111,7 +119,7 @@ export default function PlayerApp({ user, onLogout, onUserUpdated }: Props) {
         </Routes>
       </main>
 
-      <nav className="pl-nav-mobile"><NavButtons mobile /></nav>
+      <nav inert={overlayOpen} className="pl-nav-mobile"><NavButtons mobile /></nav>
       <GameLauncher l={launcher} />
     </div>
   );

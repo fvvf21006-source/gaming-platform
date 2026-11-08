@@ -143,16 +143,16 @@ function PlayerGameAccess({}: Props) {
               const cost = activeSession.pointsSpent || selectedGame?.pointCost || 10;
 
               if (gameName.includes("wheel") || gameName.includes("lucky")) {
-                return <LuckyWheel sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <LuckyWheel sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} />;
               }
               if (gameName.includes("slot")) {
-                return <SlotMachine sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <SlotMachine sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} />;
               }
               if (gameName.includes("mine")) {
-                return <MinesGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <MinesGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} />;
               }
               if (gameName.includes("crash") || gameName.includes("rocket")) {
-                return <CrashGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} onCancel={() => setActiveSession(null)} />;
+                return <CrashGame sessionId={activeSession.id} pointCost={cost} onComplete={handleFinish} />;
               }
               if (gameName.includes("target")) {
                 return <TargetBlitz onFinish={handleFinish} />;

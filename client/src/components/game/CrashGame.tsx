@@ -9,7 +9,7 @@ interface Props {
   sessionId?: string;
   pointCost: number;
   onComplete: (score: number) => void;
-  onCancel: () => void;
+  onFlightEnd?: () => void;
 }
 
 // Multiplier grows exponentially: 2x after ~5.8s, 10x after ~19s.
@@ -25,21 +25,23 @@ function rollCrashPoint(): number {
   return Math.min(Math.max(1, Math.floor(raw * 100) / 100), MAX_MULTIPLIER.crash);
 }
 
-type Phase = "ready" | "running" | "crashed" | "cashed";
+type Phase = "ready" | "running" | "crashed";
+type Cashout = { multiplier: number; points: number };
 
-export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }: Props) {
+export default function CrashGame({ sessionId, pointCost, onComplete, onFlightEnd }: Props) {
   const [multiplier, setMultiplier] = useState(1);
   const [phase, setPhase] = useState<Phase>("ready");
-  const [payout, setPayout] = useState(0);
+  const [cashout, setCashout] = useState<Cashout | null>(null);
   const [launching, setLaunching] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
-  const crashPointRef = useRef(1);
-  // Set when a supervisor preset a win: the multiplier the round must end on.
-  const presetCashRef = useRef<{ multiplier: number; points: number } | null>(null);
+  const launchPending = useRef(false);
+  const crashTimeRef = useRef(0);
+  const mounted = useRef(false);
+  const cashoutRef = useRef<Cashout | null>(null);
+  const presetCashRef = useRef<Cashout | null>(null);
   const liveMultRef = useRef(1);
-  const elapsedRef = useRef(0);
   const trailRef = useRef<{ t: number; m: number }[]>([]);
   const settle = useSettle(onComplete);
   const fetchForced = useForcedOutcome(sessionId);
@@ -82,39 +84,33 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
   }, []);
 
   useEffect(() => {
+    mounted.current = true;
     drawGraph(0, 1, false);
     return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      mounted.current = false;
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     };
   }, [drawGraph]);
 
-  const endCashedOut = (atMultiplier: number, points: number) => {
-    if (frameRef.current) cancelAnimationFrame(frameRef.current);
-    liveMultRef.current = atMultiplier;
-    trailRef.current.push({ t: elapsedRef.current, m: atMultiplier });
-    setMultiplier(atMultiplier);
-    setPayout(points);
-    setPhase("cashed");
-    drawGraph(elapsedRef.current, atMultiplier, false);
-    settle(points);
+  const recordCashout = (payout: Cashout) => {
+    if (cashoutRef.current) return;
+    cashoutRef.current = payout;
+    setCashout(payout);
+    settle(payout.points);
   };
 
   const launch = async () => {
-    if (phase !== "ready" || launching) return;
+    if (phase !== "ready" || launchPending.current) return;
+    launchPending.current = true;
     setLaunching(true);
-
-    // A supervisor can preset the result: 0 crashes the rocket straight away,
-    // anything else flies to that multiplier and cashes out there.
     const forced = await fetchForced();
-    presetCashRef.current = null;
-    if (forced === null) {
-      crashPointRef.current = rollCrashPoint();
-    } else if (forced === 0) {
-      crashPointRef.current = 1;
-    } else {
+    if (!mounted.current) return;
+
+    let crashAt = forced === null ? rollCrashPoint() : 1;
+    if (forced !== null && forced > 0) {
       const target = Math.max(1, forced / pointCost);
       presetCashRef.current = { multiplier: Number(target.toFixed(2)), points: forced };
-      crashPointRef.current = target + 1;
+      crashAt = Math.min(MAX_MULTIPLIER.crash, target + 1);
     }
 
     trailRef.current = [{ t: 0, m: 1 }];
@@ -122,32 +118,27 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
     setPhase("running");
 
     const start = performance.now();
+    crashTimeRef.current = start + (Math.log(crashAt) / GROWTH_PER_SEC) * 1000;
     const tick = (now: number) => {
       const elapsed = (now - start) / 1000;
-      elapsedRef.current = elapsed;
       const mult = Math.exp(GROWTH_PER_SEC * elapsed);
-      const crashAt = crashPointRef.current;
       const preset = presetCashRef.current;
-
-      if (preset && mult >= preset.multiplier) {
-        endCashedOut(preset.multiplier, preset.points);
-        return;
-      }
+      if (preset && mult >= preset.multiplier) recordCashout(preset);
 
       if (mult >= crashAt) {
-        liveMultRef.current = crashAt;
+        frameRef.current = null;
         trailRef.current.push({ t: elapsed, m: crashAt });
         setMultiplier(crashAt);
         setPhase("crashed");
         drawGraph(elapsed, crashAt, true);
-        settle(0);
+        if (!cashoutRef.current) settle(0);
+        onFlightEnd?.();
         return;
       }
 
-      const shown = Math.floor(mult * 100) / 100;
-      liveMultRef.current = shown;
+      liveMultRef.current = Math.floor(mult * 100) / 100;
       trailRef.current.push({ t: elapsed, m: mult });
-      setMultiplier(shown);
+      setMultiplier(liveMultRef.current);
       drawGraph(elapsed, mult, false);
       frameRef.current = requestAnimationFrame(tick);
     };
@@ -155,11 +146,9 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
   };
 
   const cashOut = () => {
-    if (phase !== "running") return;
-    // Read the ref, not state: state can lag a frame behind what the player saw.
-    const preset = presetCashRef.current;
-    if (preset) endCashedOut(preset.multiplier, preset.points);
-    else endCashedOut(liveMultRef.current, payoutFor(pointCost, liveMultRef.current));
+    if (phase !== "running" || cashoutRef.current || performance.now() >= crashTimeRef.current) return;
+    const shown = liveMultRef.current;
+    recordCashout(presetCashRef.current ?? { multiplier: shown, points: payoutFor(pointCost, shown) });
   };
 
   const crashed = phase === "crashed";
@@ -176,10 +165,10 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
       <div className="relative w-full bg-slate-900 rounded-xl overflow-hidden border border-slate-800">
         <canvas ref={canvasRef} width={380} height={220} className="w-full h-auto" />
         <div className="absolute top-3 left-1/2 -translate-x-1/2 text-center pointer-events-none">
-          <span className={`text-4xl font-black tabular-nums ${crashed ? "text-rose-500" : phase === "cashed" ? "text-emerald-400" : "text-sky-400"}`}>
+          <span className={`text-4xl font-black tabular-nums ${crashed ? "text-rose-500" : "text-sky-400"}`}>
             {multiplier.toFixed(2)}x
           </span>
-          {phase === "running" && (
+          {phase === "running" && !cashout && (
             <div className="text-xs text-emerald-300 font-semibold">
               Cash out now: {formatPoints(payoutFor(pointCost, multiplier))} pts
             </div>
@@ -187,23 +176,16 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
         </div>
       </div>
 
-      <div className="h-10 mt-2 text-center" aria-live="polite">
+      <div className="min-h-10 mt-2 text-center" aria-live="polite">
         {crashed && <p className="text-rose-500 font-bold text-lg">💥 Crashed at {multiplier.toFixed(2)}x</p>}
-        {phase === "cashed" && (
+        {cashout && (
           <p className="text-emerald-400 font-bold text-lg">
-            🎉 Cashed out @ {multiplier.toFixed(2)}x (+{formatPoints(payout)} pts)
+            Cashed out at {cashout.multiplier.toFixed(2)}x (+{formatPoints(cashout.points)} pts)
           </p>
         )}
       </div>
 
       <div className="flex items-center gap-3 mt-2 w-full">
-        <button
-          onClick={onCancel}
-          disabled={phase !== "ready" || launching}
-          className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-colors disabled:opacity-50"
-        >
-          Exit
-        </button>
         {phase === "ready" ? (
           <button
             onClick={launch}
@@ -212,15 +194,14 @@ export default function CrashGame({ sessionId, pointCost, onComplete, onCancel }
           >
             {launching ? "LAUNCHING…" : "LAUNCH 🚀"}
           </button>
-        ) : (
+        ) : phase === "running" && !cashout ? (
           <button
             onClick={cashOut}
-            disabled={phase !== "running"}
             className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-lg shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
           >
             CASH OUT
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   );
